@@ -36,7 +36,10 @@ export function PickCard({
   outcome?: PickOutcome;
   showReasoning?: boolean;
 }) {
-  const gainPct = (((pick.target - pick.buy_zone) / pick.buy_zone) * 100).toFixed(1);
+  const buyZone = Number(pick.buy_zone);
+  const target = Number(pick.target);
+  const stopLoss = Number(pick.stop_loss);
+  const gainPct = (((target - buyZone) / buyZone) * 100).toFixed(1);
 
   return (
     <div className="border border-[var(--color-border)] rounded-lg p-4">
@@ -53,9 +56,9 @@ export function PickCard({
           </p>
         </div>
         <div className="text-right font-mono tabular-nums text-sm">
-          <div className="font-medium">৳{pick.buy_zone.toFixed(2)}</div>
+          <div className="font-medium">৳{buyZone.toFixed(2)}</div>
           <div className="text-xs text-[var(--color-muted)]">
-            Target: ৳{pick.target.toFixed(2)}
+            Target: ৳{target.toFixed(2)}
           </div>
         </div>
       </div>
