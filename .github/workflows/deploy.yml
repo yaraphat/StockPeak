@@ -58,7 +58,8 @@ jobs:
           username: ${{ secrets.VM_USER }}
           password: ${{ secrets.VM_PASSWORD }}
           script: |
-            # Pull latest image
+            # Login to ghcr.io and pull latest image
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u yaraphat --password-stdin
             docker pull ghcr.io/${{ github.repository }}/app:latest
 
             # Stop existing container
