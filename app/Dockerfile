@@ -4,13 +4,13 @@ FROM node:22-alpine AS base
 FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # Build
 FROM base AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm install
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npx next build
