@@ -46,16 +46,21 @@ def technical_screen(df):
         volume = int(row["volume"])
         value = float(row["value"])
         trades = int(row["trade"])
-        change = float(row["change"])
+
+        # IMPORTANT: bdshare 'change' column is ABSOLUTE value (always >= 0)
+        # Must calculate real change from ltp vs ycp
+        real_change = ltp - ycp
+        change_pct = (real_change / ycp * 100) if ycp > 0 else 0
 
         score = 0
         signals = []
 
-        # 1. Positive change (bullish momentum)
-        change_pct = (change / ycp * 100) if ycp > 0 else 0
+        # 1. Positive change (genuinely bullish, not just abs value)
         if change_pct > 0.5:
             score += 1
             signals.append(f"Up {change_pct:.1f}%")
+        elif change_pct < -0.5:
+            signals.append(f"Down {change_pct:.1f}%")
 
         # 2. High volume (active interest) — value traded > 5M BDT
         if value > 5:
@@ -115,10 +120,11 @@ def main():
     df = scrape_dse()
     candidates = technical_screen(df)
 
-    # Market summary
-    total_up = len(df[df["change"] > 0])
-    total_down = len(df[df["change"] < 0])
-    total_unchanged = len(df[df["change"] == 0])
+    # Market summary — use REAL change (ltp - ycp), not bdshare's abs 'change' column
+    df["real_change"] = df["ltp"] - df["ycp"]
+    total_up = len(df[df["real_change"] > 0])
+    total_down = len(df[df["real_change"] < 0])
+    total_unchanged = len(df[df["real_change"] == 0])
 
     print(f"\n[3/3] Market Summary:")
     print(f"  Advancing: {total_up}  |  Declining: {total_down}  |  Unchanged: {total_unchanged}")
