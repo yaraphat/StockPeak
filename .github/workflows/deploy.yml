@@ -57,10 +57,19 @@ jobs:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           password: ${{ secrets.VM_PASSWORD }}
+          envs: GHCR_TOKEN,DATABASE_URL,NEXTAUTH_SECRET,NEXTAUTH_URL
           script: |
             # Login to ghcr.io and pull latest image
-            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u yaraphat --password-stdin
-            docker pull ghcr.io/${{ github.repository }}/app:latest
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u yaraphat --password-stdin
+            docker pull ghcr.io/yaraphat/stockpeak/app:latest
+
+            # Write env file (secrets stay on disk, not in docker inspect)
+            cat > /root/.stockpeak.env << ENV
+            DATABASE_URL=$DATABASE_URL
+            NEXTAUTH_SECRET=$NEXTAUTH_SECRET
+            NEXTAUTH_URL=$NEXTAUTH_URL
+            ENV
+            sed -i 's/^            //' /root/.stockpeak.env
 
             # Stop existing container
             docker stop stockpeak-app 2>/dev/null || true
@@ -71,10 +80,8 @@ jobs:
               --name stockpeak-app \
               --restart unless-stopped \
               --network host \
-              -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-              -e NEXTAUTH_SECRET="${{ secrets.NEXTAUTH_SECRET }}" \
-              -e NEXTAUTH_URL="${{ secrets.NEXTAUTH_URL }}" \
-              ghcr.io/${{ github.repository }}/app:latest
+              --env-file /root/.stockpeak.env \
+              ghcr.io/yaraphat/stockpeak/app:latest
 
             # Cleanup old images
             docker image prune -f
