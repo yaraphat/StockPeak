@@ -57,25 +57,18 @@ jobs:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           password: ${{ secrets.VM_PASSWORD }}
-          envs: GHCR_TOKEN,DATABASE_URL,NEXTAUTH_SECRET,NEXTAUTH_URL
+          envs: GHCR_TOKEN
           script: |
             # Login to ghcr.io and pull latest image
             echo "$GHCR_TOKEN" | docker login ghcr.io -u yaraphat --password-stdin
             docker pull ghcr.io/yaraphat/stockpeak/app:latest
 
-            # Write env file (secrets stay on disk, not in docker inspect)
-            cat > /root/.stockpeak.env << ENV
-            DATABASE_URL=$DATABASE_URL
-            NEXTAUTH_SECRET=$NEXTAUTH_SECRET
-            NEXTAUTH_URL=$NEXTAUTH_URL
-            ENV
-            sed -i 's/^            //' /root/.stockpeak.env
-
-            # Stop existing container
+            # Deploy using pre-configured env file on VM
+            # Env file at /root/.stockpeak.env is managed manually on the VM
+            # Contains: DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL
             docker stop stockpeak-app 2>/dev/null || true
             docker rm stockpeak-app 2>/dev/null || true
 
-            # Run new container
             docker run -d \
               --name stockpeak-app \
               --restart unless-stopped \
