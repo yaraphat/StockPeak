@@ -1,0 +1,2 @@
+{"skill":"plan-ceo-review","timestamp":"2026-04-06T14:27:13Z","status":"clean","unresolved":0,"critical_gaps":0,"mode":"SELECTIVE_EXPANSION","scope_proposed":5,"scope_accepted":3,"scope_deferred":2,"commit":"none"}
+{"skill":"codex-plan-review","timestamp":"2026-04-06T14:27:13Z","status":"issues_found","source":"claude","commit":"none"}
