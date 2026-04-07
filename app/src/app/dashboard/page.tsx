@@ -97,14 +97,12 @@ function DashboardPlaceholder() {
       <main className="max-w-3xl mx-auto px-6 py-8">
         <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] overflow-hidden p-8 text-center">
           <h1 className="font-display text-xl font-semibold mb-4">Dashboard</h1>
-          <p className="text-[var(--color-muted)] mb-4">
-            Database not configured yet. Set up Supabase environment variables to see live picks.
+          <p className="text-[var(--color-muted)] mb-4 font-bengali">
+            ডেটাবেস কনফিগার করা হয়নি অথবা এখনও কোনো পিক প্রকাশিত হয়নি।
           </p>
-          <code className="text-xs bg-[var(--background)] px-3 py-2 rounded font-mono block">
-            NEXT_PUBLIC_SUPABASE_URL=...<br />
-            NEXT_PUBLIC_SUPABASE_ANON_KEY=...<br />
-            SUPABASE_SERVICE_ROLE_KEY=...
-          </code>
+          <p className="text-[var(--color-muted)] text-sm">
+            Set <code className="bg-[var(--background)] px-1 rounded font-mono text-xs">DATABASE_URL</code> environment variable to connect.
+          </p>
         </div>
       </main>
     </div>

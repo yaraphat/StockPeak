@@ -85,7 +85,7 @@ function TrackRecordPlaceholder() {
       </nav>
       <main className="max-w-3xl mx-auto px-6 py-8 text-center">
         <h1 className="font-display text-2xl font-bold mb-4">Track Record</h1>
-        <p className="text-[var(--color-muted)]">Database not configured. Connect Supabase to see pick history.</p>
+        <p className="text-[var(--color-muted)] font-bengali">ডেটাবেস কনফিগার করা হয়নি অথবা এখনও কোনো পিক প্রকাশিত হয়নি।</p>
       </main>
     </div>
   );
