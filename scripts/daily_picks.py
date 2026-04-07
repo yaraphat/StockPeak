@@ -7,7 +7,7 @@ Runs at 6:00 AM BDT (UTC+6) via GitHub Actions or Railway cron.
 2. Run technical screen (AND logic, fallback to 3-of-5 scoring)
 3. Send top candidates to Claude API for pick selection + reasoning
 4. Validate picks (stop_loss < buy_zone < target, ticker exists)
-5. Store in Supabase
+5. Store in PostgreSQL
 6. Deliver via email (Resend) and Telegram
 """
 
@@ -18,18 +18,21 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import anthropic
+import psycopg2
+import psycopg2.extras
 import requests
-from supabase import create_client
 
 # --- Config ---
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+DATABASE_URL = os.environ["DATABASE_URL"]
 CLAUDE_API_KEY = os.environ["CLAUDE_API_KEY"]
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "")
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 
-db = create_client(SUPABASE_URL, SUPABASE_KEY)
+def get_db():
+    conn = psycopg2.connect(DATABASE_URL)
+    conn.autocommit = True
+    return conn
 claude = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
 
 
@@ -203,35 +206,34 @@ def validate_picks(picks: list[dict], valid_tickers: set[str]) -> list[dict]:
 
 
 def store_picks(picks: list[dict], mood: str, mood_reason: str) -> list[str]:
-    """Store picks in Supabase. Returns list of pick IDs."""
+    """Store picks in PostgreSQL. Returns list of pick IDs."""
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     today = datetime.now().strftime("%Y-%m-%d")
     pick_ids = []
 
     for pick in picks:
-        result = db.table("picks").insert({
-            "date": today,
-            "ticker": pick["ticker"],
-            "company_name": pick.get("company_name", ""),
-            "company_name_bn": pick.get("company_name_bn", ""),
-            "buy_zone": pick["buy_zone"],
-            "target": pick["target"],
-            "stop_loss": pick["stop_loss"],
-            "confidence": pick["confidence"],
-            "reasoning_bn": pick.get("reasoning_bn", ""),
-            "reasoning_en": pick.get("reasoning_en", ""),
-            "market_mood": mood,
-            "market_mood_reason": mood_reason,
-        }).execute()
+        cur.execute("""
+            INSERT INTO picks (date, ticker, company_name, company_name_bn,
+                buy_zone, target, stop_loss, confidence,
+                reasoning_bn, reasoning_en, market_mood, market_mood_reason)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (
+            today, pick["ticker"], pick.get("company_name", ""),
+            pick.get("company_name_bn", ""), pick["buy_zone"], pick["target"],
+            pick["stop_loss"], pick["confidence"], pick.get("reasoning_bn", ""),
+            pick.get("reasoning_en", ""), mood, mood_reason,
+        ))
+        pick_id = cur.fetchone()["id"]
+        pick_ids.append(str(pick_id))
 
-        pick_id = result.data[0]["id"]
-        pick_ids.append(pick_id)
+        cur.execute("""
+            INSERT INTO pick_outcomes (pick_id, outcome) VALUES (%s, 'open')
+        """, (pick_id,))
 
-        # Create open outcome
-        db.table("pick_outcomes").insert({
-            "pick_id": pick_id,
-            "outcome": "open",
-        }).execute()
-
+    cur.close()
+    conn.close()
     return pick_ids
 
 
@@ -284,8 +286,12 @@ def send_emails(picks: list[dict], mood: str, mood_reason: str):
         return
 
     # Get pro subscribers
-    result = db.table("profiles").select("email, name").eq("role", "pro").execute()
-    subscribers = result.data or []
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT email, name FROM users WHERE role = 'pro'")
+    subscribers = cur.fetchall()
+    cur.close()
+    conn.close()
 
     if not subscribers:
         print("No pro subscribers, skipping emails")

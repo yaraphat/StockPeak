@@ -1,18 +1,19 @@
-import { createClient } from "@supabase/supabase-js";
+import postgres from "postgres";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+const connectionString = process.env.DATABASE_URL ?? "";
 
-export const supabase = supabaseUrl
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+let sql: ReturnType<typeof postgres> | null = null;
 
-// Server-side client with service role key
-export function createServiceClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) {
-    throw new Error("Supabase not configured");
+export function getDb() {
+  if (!connectionString) {
+    throw new Error("DATABASE_URL not configured");
   }
-  return createClient(url, key);
+  if (!sql) {
+    sql = postgres(connectionString, {
+      max: 10,
+      idle_timeout: 20,
+      connect_timeout: 10,
+    });
+  }
+  return sql;
 }
