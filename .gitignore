@@ -1,0 +1,28 @@
+# Dependencies
+app/node_modules/
+__pycache__/
+*.pyc
+
+# Next.js
+app/.next/
+app/out/
+
+# Environment
+.env
+.env.local
+app/.env
+app/.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Playwright
+.playwright-mcp/
+
+# Pipeline state (local only)
+.idea-to-product-state.json

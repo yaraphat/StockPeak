@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+:root {
+  --color-primary: #0066CC;
+  --color-primary-hover: #0052A3;
+  --color-success: #16A34A;
+  --color-danger: #DC2626;
+  --color-warning: #D97706;
+  --color-info: #0284C7;
+  --background: #F8F6F4;
+  --foreground: #1C1917;
+  --color-surface: #FFFFFF;
+  --color-muted: #78716C;
+  --color-border: #E7E5E4;
+  --color-border-subtle: #F5F5F4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-primary: #3B82F6;
+    --color-primary-hover: #2563EB;
+    --color-success: #22C55E;
+    --color-danger: #EF4444;
+    --background: #121212;
+    --foreground: #E7E5E4;
+    --color-surface: #1E1E1E;
+    --color-muted: #A8A29E;
+    --color-border: #2D2D2D;
+    --color-border-subtle: #1A1A1A;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-success: var(--color-success);
+  --color-danger: var(--color-danger);
+  --color-warning: var(--color-warning);
+  --color-info: var(--color-info);
+  --color-surface: var(--color-surface);
+  --color-muted: var(--color-muted);
+  --color-border: var(--color-border);
+  --color-border-subtle: var(--color-border-subtle);
+  --font-body: var(--font-body), system-ui, sans-serif;
+  --font-display: var(--font-display), Georgia, serif;
+  --font-bengali: var(--font-bengali), sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 32;
+}
+
+.font-bengali {
+  font-family: var(--font-bengali);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
