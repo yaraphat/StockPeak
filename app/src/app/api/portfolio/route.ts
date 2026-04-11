@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getDb } from "@/lib/supabase";
+import { getDb } from "@/lib/postgres";
 
 export async function GET() {
   const session = await getServerSession(authOptions);

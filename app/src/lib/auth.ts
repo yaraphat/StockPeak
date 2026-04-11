@@ -2,7 +2,7 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
-import { getDb } from "./supabase";
+import { getDb } from "./postgres";
 
 export const authOptions: NextAuthOptions = {
   providers: [

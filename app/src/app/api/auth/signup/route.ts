@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { getDb } from "@/lib/supabase";
+import { getDb } from "@/lib/postgres";
 
 export async function POST(request: Request) {
   try {

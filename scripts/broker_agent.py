@@ -2,16 +2,20 @@
 """
 Stock Peak AI Broker Agent — Data Pipeline
 Scrapes all DSE stocks, computes technical indicators,
-classifies each stock, and outputs structured data for
-Claude Code to analyze as an expert broker.
+classifies each stock per risk tier, and outputs structured
+data for the daily_picks.py pipeline.
 
 Usage: python3 scripts/broker_agent.py
-Then feed the output to Claude Code for expert analysis.
+Output: /tmp/stockpeak-broker-report.json
 """
 
 import json
+import logging
+import logging.handlers
+import os
 import sys
-from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta
 from typing import Optional
 
 import pandas as pd
@@ -19,12 +23,60 @@ import numpy as np
 from bdshare import get_current_trade_data, get_basic_historical_data
 
 
+# --- Logging setup ---
+LOG_DIR = os.environ.get("STOCKPEAK_LOG_DIR", "/var/log/stockpeak")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+logger = logging.getLogger("broker_agent")
+logger.setLevel(logging.INFO)
+
+_file_handler = logging.handlers.RotatingFileHandler(
+    f"{LOG_DIR}/pipeline.log", maxBytes=10 * 1024 * 1024, backupCount=5
+)
+_file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s — %(message)s"))
+
+_console_handler = logging.StreamHandler()
+_console_handler.setFormatter(logging.Formatter("%(message)s"))
+
+logger.addHandler(_file_handler)
+logger.addHandler(_console_handler)
+
+
+# --- Risk profile definitions ---
+RISK_PROFILES = {
+    "conservative": {
+        "min_rsi": 35,
+        "max_rsi": 60,
+        "min_liquidity_mn": 5.0,
+        "stop_loss_multiplier": 1.0,
+        "target_multiplier": 2.0,
+        "preferred_signals": ["STRONG BUY"],
+    },
+    "moderate": {
+        "min_rsi": 30,
+        "max_rsi": 65,
+        "min_liquidity_mn": 2.0,
+        "stop_loss_multiplier": 1.5,
+        "target_multiplier": 2.5,
+        "preferred_signals": ["STRONG BUY", "BUY"],
+    },
+    "aggressive": {
+        "min_rsi": 25,
+        "max_rsi": 75,
+        "min_liquidity_mn": 0.5,
+        "stop_loss_multiplier": 2.0,
+        "target_multiplier": 4.0,
+        "preferred_signals": ["STRONG BUY", "BUY", "HOLD"],
+    },
+}
+
+
 def scrape_current_data() -> pd.DataFrame:
     """Get current DSE trade data for all stocks."""
-    print("[1/5] Scraping current DSE trade data...")
+    logger.info("[1/5] Scraping current DSE trade data...")
     df = get_current_trade_data()
     if df is None or len(df) == 0:
-        print("ERROR: No DSE data")
+        logger.error("No DSE data returned from bdshare")
         sys.exit(1)
 
     for col in ["ltp", "high", "low", "close", "ycp", "change", "trade", "value", "volume"]:
@@ -34,23 +86,38 @@ def scrape_current_data() -> pd.DataFrame:
     df["change_pct"] = ((df["real_change"] / df["ycp"]) * 100).round(2)
 
     active = df[df["volume"] > 0].copy()
-    print(f"  Total listed: {len(df)}, Actively traded: {len(active)}")
+    logger.info("  Total listed: %d, Actively traded: %d", len(df), len(active))
     return active
 
 
 def fetch_history(symbol: str) -> Optional[pd.DataFrame]:
-    """Fetch historical data for a symbol. Returns None on failure.
-    Note: dsebd.org often times out. Agent works in degraded mode without history."""
+    """Fetch historical data for a symbol. Returns None on failure."""
     try:
-        hist = get_basic_historical_data(symbol)
+        end = datetime.now().strftime("%Y-%m-%d")
+        start = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+        hist = get_basic_historical_data(start=start, end=end, code=symbol)
         if hist is not None and len(hist) >= 5:
             for col in ["open", "high", "low", "close", "volume"]:
                 if col in hist.columns:
                     hist[col] = pd.to_numeric(hist[col], errors="coerce")
-            return hist.tail(60)
+            return hist
     except Exception:
         pass
     return None
+
+
+def fetch_histories_parallel(symbols: list[str], max_workers: int = 5) -> dict[str, Optional[pd.DataFrame]]:
+    """Fetch historical data for multiple symbols in parallel."""
+    results = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_symbol = {executor.submit(fetch_history, sym): sym for sym in symbols}
+        for future in as_completed(future_to_symbol):
+            sym = future_to_symbol[future]
+            try:
+                results[sym] = future.result()
+            except Exception:
+                results[sym] = None
+    return results
 
 
 def compute_rsi(closes: pd.Series, period: int = 14) -> float:
@@ -75,19 +142,28 @@ def compute_macd(closes: pd.Series) -> dict:
     histogram = macd_line - signal_line
 
     curr_hist = float(histogram.iloc[-1])
-    prev_hist = float(histogram.iloc[-2]) if len(histogram) > 1 else 0
 
+    # Check last 3 bars for recent crossover
     crossover = "none"
-    if prev_hist < 0 and curr_hist > 0:
-        crossover = "bullish"
-    elif prev_hist > 0 and curr_hist < 0:
-        crossover = "bearish"
+    lookback = min(3, len(histogram) - 1)
+    for i in range(1, lookback + 1):
+        prev = float(histogram.iloc[-(i + 1)])
+        curr = float(histogram.iloc[-i])
+        if prev <= 0 and curr > 0:
+            crossover = "bullish"
+            break
+        elif prev >= 0 and curr < 0:
+            crossover = "bearish"
+            break
+
+    macd_above_signal = float(macd_line.iloc[-1]) > float(signal_line.iloc[-1])
 
     return {
         "macd": round(float(macd_line.iloc[-1]), 3),
         "signal": round(float(signal_line.iloc[-1]), 3),
         "histogram": round(curr_hist, 3),
         "crossover": crossover,
+        "macd_above_signal": macd_above_signal,
     }
 
 
@@ -161,18 +237,31 @@ def compute_volume_analysis(volumes: pd.Series, current_volume: int) -> dict:
     }
 
 
-def classify_stock(indicators: dict) -> dict:
-    """Classify a stock based on all indicators. Returns signal and confidence."""
-    score = 0  # -10 to +10 scale
+def classify_stock(indicators: dict, risk_profile: Optional[dict] = None) -> dict:
+    """
+    Classify a stock based on all indicators.
+
+    risk_profile: one of the RISK_PROFILES dict values. Defaults to 'moderate'.
+    Returns signal, score, confidence, entry/stop/target levels per the given profile.
+    """
+    if risk_profile is None:
+        risk_profile = RISK_PROFILES["moderate"]
+
+    min_rsi = risk_profile["min_rsi"]
+    max_rsi = risk_profile["max_rsi"]
+    sl_mult = risk_profile["stop_loss_multiplier"]
+    tgt_mult = risk_profile["target_multiplier"]
+
+    score = 0
     reasons = []
 
-    # Price vs MAs
     ltp = indicators["ltp"]
     ema_50 = indicators.get("ema_50")
     ema_200 = indicators.get("ema_200")
     ema_9 = indicators.get("ema_9")
     ema_21 = indicators.get("ema_21")
 
+    # --- Trend (EMA alignment) ---
     if ema_50 and ltp > ema_50:
         score += 1
         reasons.append("Above EMA50")
@@ -194,21 +283,21 @@ def classify_stock(indicators: dict) -> dict:
         score -= 1
         reasons.append("EMA9 < EMA21 (short-term bearish)")
 
-    # RSI
-    rsi = indicators.get("rsi")
-    if rsi is None:
-        rsi = 50  # neutral default when no history
-    if 40 <= rsi <= 60:
+    # --- RSI (tier-parameterized) ---
+    rsi = indicators.get("rsi") or 50
+    healthy_low = min_rsi + 5
+    healthy_high = max_rsi - 5
+    if healthy_low <= rsi <= healthy_high:
         score += 1
-        reasons.append(f"RSI {rsi} (healthy range)")
-    elif rsi > 70:
+        reasons.append(f"RSI {rsi} (healthy range for profile)")
+    elif rsi > max_rsi:
         score -= 1
-        reasons.append(f"RSI {rsi} (OVERBOUGHT)")
-    elif rsi < 30:
-        score += 1  # oversold = potential reversal buy
+        reasons.append(f"RSI {rsi} (OVERBOUGHT for this profile)")
+    elif rsi < min_rsi:
+        score += 1
         reasons.append(f"RSI {rsi} (OVERSOLD — potential reversal)")
 
-    # MACD
+    # --- MACD ---
     macd = indicators.get("macd_data", {})
     if macd.get("crossover") == "bullish":
         score += 2
@@ -216,42 +305,54 @@ def classify_stock(indicators: dict) -> dict:
     elif macd.get("crossover") == "bearish":
         score -= 2
         reasons.append("MACD bearish crossover")
-    elif macd.get("histogram", 0) > 0:
-        score += 1
-        reasons.append("MACD histogram positive")
-    elif macd.get("histogram", 0) < 0:
-        score -= 1
-        reasons.append("MACD histogram negative")
+    else:
+        hist_val = macd.get("histogram", 0)
+        above = macd.get("macd_above_signal", False)
+        if above and hist_val > 0:
+            score += 1
+            reasons.append("MACD above signal (bullish momentum)")
+        elif not above and hist_val < 0:
+            score -= 1
+            reasons.append("MACD below signal (bearish momentum)")
 
-    # Bollinger
+    # --- Bollinger ---
     bb = indicators.get("bollinger", {})
     if bb.get("squeeze"):
         reasons.append("Bollinger squeeze (breakout imminent)")
-    if bb.get("position") == "lower" and rsi < 35:
+    if bb.get("position") == "lower" and rsi < min_rsi + 5:
         score += 2
         reasons.append("At lower Bollinger + oversold (strong buy signal)")
-    elif bb.get("position") == "upper" and rsi > 65:
+    elif bb.get("position") == "upper" and rsi > max_rsi - 5:
         score -= 1
         reasons.append("At upper Bollinger + overbought")
 
-    # Volume
+    # --- Volume ---
     vol = indicators.get("volume_analysis", {})
-    if vol.get("ratio", 1) > 1.5:
-        if indicators.get("change_pct", 0) > 0:
-            score += 1
-            reasons.append(f"Volume spike {vol['ratio']}x with price up")
-        else:
-            score -= 1
-            reasons.append(f"Volume spike {vol['ratio']}x with price down (distribution)")
-
-    # Today's price action
     change_pct = indicators.get("change_pct", 0)
-    if change_pct >= 5:
-        reasons.append(f"Strong up {change_pct}% today")
-    elif change_pct <= -3:
-        reasons.append(f"Down {change_pct}% today")
+    vol_ratio = vol.get("ratio", 1)
+    if vol_ratio > 1.5:
+        if change_pct > 0:
+            score += 1
+            reasons.append(f"Volume spike {vol_ratio}x with price up (accumulation)")
+        elif change_pct < -1:
+            score -= 1
+            reasons.append(f"Volume spike {vol_ratio}x with price down (distribution)")
 
-    # Close position in day's range
+    # --- Intraday momentum ---
+    if change_pct >= 5:
+        score += 2
+        reasons.append(f"Strong momentum +{change_pct}% today")
+    elif change_pct >= 2:
+        score += 1
+        reasons.append(f"Positive momentum +{change_pct}% today")
+    elif change_pct <= -5:
+        score -= 2
+        reasons.append(f"Heavy selling {change_pct}% today")
+    elif change_pct <= -3:
+        score -= 1
+        reasons.append(f"Negative momentum {change_pct}% today")
+
+    # --- Close position in day's range ---
     high, low, close = indicators.get("high", 0), indicators.get("low", 0), indicators.get("close", 0)
     day_range = high - low
     if day_range > 0:
@@ -263,14 +364,15 @@ def classify_stock(indicators: dict) -> dict:
             score -= 1
             reasons.append("Closed near day low (selling pressure)")
 
-    # Liquidity check
+    # --- Liquidity check (tier-parameterized) ---
     value_mn = indicators.get("value_mn", 0)
-    if value_mn < 0.5:
-        reasons.append("LOW LIQUIDITY — avoid")
-        score = max(score, 0) - 2  # penalize illiquid stocks
+    min_liq = risk_profile["min_liquidity_mn"]
+    if value_mn < min_liq:
+        reasons.append(f"LOW LIQUIDITY for profile (৳{value_mn:.1f}M < ৳{min_liq}M required)")
+        score = max(score, 0) - 2
 
-    # Classify
-    if score >= 4:
+    # --- Classify ---
+    if score >= 5:
         signal = "STRONG BUY"
     elif score >= 2:
         signal = "BUY"
@@ -281,25 +383,22 @@ def classify_stock(indicators: dict) -> dict:
     else:
         signal = "STRONG SELL"
 
-    confidence = min(10, max(1, abs(score) + 3))
+    confidence = min(10, max(1, abs(score) + 2))
 
-    # Calculate targets using ATR
+    # --- ATR-based targets (tier-parameterized multipliers) ---
     atr = indicators.get("atr", 0)
-    if atr > 0 and signal in ("STRONG BUY", "BUY"):
-        entry = ltp
-        stop_loss = round(entry - 2.5 * atr, 2)
-        target_1 = round(entry + 2 * atr, 2)
-        target_2 = round(entry + 3.5 * atr, 2)
-    elif atr > 0 and signal in ("SELL", "STRONG SELL"):
-        entry = ltp
-        stop_loss = round(entry + 2 * atr, 2)
-        target_1 = round(entry - 2 * atr, 2)
-        target_2 = round(entry - 3.5 * atr, 2)
+    min_atr = ltp * 0.02
+    effective_atr = max(atr, min_atr)
+
+    entry = ltp
+    if signal in ("STRONG BUY", "BUY", "HOLD"):
+        stop_loss = round(entry - sl_mult * effective_atr, 2)
+        target_1 = round(entry + tgt_mult * effective_atr, 2)
+        target_2 = round(entry + (tgt_mult * 1.6) * effective_atr, 2)
     else:
-        entry = ltp
-        stop_loss = round(ltp * 0.95, 2)
-        target_1 = round(ltp * 1.05, 2)
-        target_2 = round(ltp * 1.10, 2)
+        stop_loss = round(entry + sl_mult * effective_atr, 2)
+        target_1 = round(entry - tgt_mult * effective_atr, 2)
+        target_2 = round(entry - (tgt_mult * 1.6) * effective_atr, 2)
 
     rr_ratio = abs(target_1 - entry) / abs(entry - stop_loss) if abs(entry - stop_loss) > 0 else 0
 
@@ -316,43 +415,57 @@ def classify_stock(indicators: dict) -> dict:
     }
 
 
+def classify_all_tiers(indicators: dict) -> dict:
+    """Run classify_stock for all 3 risk tiers. Returns risk_annotations dict."""
+    return {
+        tier: classify_stock(indicators, profile)
+        for tier, profile in RISK_PROFILES.items()
+    }
+
+
 def main():
     start = datetime.now()
-    print(f"{'='*70}")
-    print(f"  STOCK PEAK AI BROKER AGENT — DATA PIPELINE")
-    print(f"  {start.strftime('%Y-%m-%d %H:%M BDT')}")
-    print(f"{'='*70}\n")
+    logger.info("=" * 70)
+    logger.info("  STOCK PEAK AI BROKER AGENT — DATA PIPELINE")
+    logger.info("  %s BDT", start.strftime("%Y-%m-%d %H:%M"))
+    logger.info("=" * 70)
 
     # Step 1: Get current data
     df = scrape_current_data()
 
     # Step 2: Market breadth
-    print("\n[2/5] Market breadth analysis...")
+    logger.info("[2/5] Market breadth analysis...")
     advancing = len(df[df["real_change"] > 0])
     declining = len(df[df["real_change"] < 0])
     unchanged = len(df[df["real_change"] == 0])
     total_value = df["value"].sum()
 
     mood = "bullish" if advancing > declining * 1.3 else ("bearish" if declining > advancing * 1.3 else "neutral")
-    print(f"  Advancing: {advancing} | Declining: {declining} | Unchanged: {unchanged}")
-    print(f"  Total turnover: ৳{total_value:.0f}M")
-    print(f"  Market Mood: {mood.upper()}")
+    logger.info("  Advancing: %d | Declining: %d | Unchanged: %d", advancing, declining, unchanged)
+    logger.info("  Total turnover: ৳%.0fM", total_value)
+    logger.info("  Market Mood: %s", mood.upper())
 
     # Step 3: Compute indicators for top stocks by value
-    print("\n[3/5] Analyzing top liquid stocks...")
-    skip_history = "--no-history" in sys.argv  # Use flag to skip slow dsebd.org calls
+    logger.info("[3/5] Analyzing top liquid stocks...")
+    skip_history = "--no-history" in sys.argv
     if skip_history:
-        print("  (Skipping historical data — using current-day signals only)")
+        logger.info("  (Skipping historical data — using current-day signals only)")
 
     df_sorted = df.sort_values("value", ascending=False)
-    top_stocks = df_sorted.head(50)  # Analyze top 50 by turnover
+    top_stocks = df_sorted.head(50)
+
+    # Fetch histories in parallel
+    symbols = [row["symbol"] for _, row in top_stocks.iterrows()]
+    if not skip_history:
+        logger.info("  Fetching historical data for %d stocks in parallel...", len(symbols))
+        histories = fetch_histories_parallel(symbols, max_workers=5)
+    else:
+        histories = {sym: None for sym in symbols}
 
     analyzed = []
     hist_success = 0
     for i, (_, row) in enumerate(top_stocks.iterrows()):
         symbol = row["symbol"]
-        sys.stdout.write(f"\r  Analyzing {i+1}/50: {symbol:12s}")
-        sys.stdout.flush()
 
         indicators = {
             "symbol": symbol,
@@ -367,7 +480,7 @@ def main():
             "trades": int(row["trade"]),
         }
 
-        hist = None if skip_history else fetch_history(symbol)
+        hist = histories.get(symbol)
         if hist is not None and len(hist) >= 14:
             hist_success += 1
             closes = hist["close"].dropna()
@@ -391,14 +504,22 @@ def main():
             indicators["atr"] = 0
             indicators["has_history"] = False
 
-        classification = classify_stock(indicators)
-        indicators.update(classification)
+        # Classify once per tier, store as risk_annotations
+        indicators["risk_annotations"] = classify_all_tiers(indicators)
+
+        # Also store the "moderate" classification at top level for backward compat
+        moderate_cls = indicators["risk_annotations"]["moderate"]
+        indicators.update(moderate_cls)
+
         analyzed.append(indicators)
 
-    print(f"\r  Analyzed 50 stocks ({hist_success} with full history, {50-hist_success} current-day only)          ")
+    logger.info(
+        "  Analyzed %d stocks (%d with full history, %d current-day only)",
+        len(analyzed), hist_success, len(analyzed) - hist_success,
+    )
 
-    # Step 4: Sort and categorize
-    print("\n[4/5] Classification results:")
+    # Step 4: Sort and categorize (using moderate tier as default)
+    logger.info("[4/5] Classification results (moderate tier):")
 
     strong_buys = [s for s in analyzed if s["signal"] == "STRONG BUY"]
     buys = [s for s in analyzed if s["signal"] == "BUY"]
@@ -406,35 +527,21 @@ def main():
     sells = [s for s in analyzed if s["signal"] == "SELL"]
     strong_sells = [s for s in analyzed if s["signal"] == "STRONG SELL"]
 
-    print(f"  STRONG BUY:  {len(strong_buys)}")
-    print(f"  BUY:         {len(buys)}")
-    print(f"  HOLD:        {len(holds)}")
-    print(f"  SELL:        {len(sells)}")
-    print(f"  STRONG SELL: {len(strong_sells)}")
+    logger.info("  STRONG BUY:  %d", len(strong_buys))
+    logger.info("  BUY:         %d", len(buys))
+    logger.info("  HOLD:        %d", len(holds))
+    logger.info("  SELL:        %d", len(sells))
+    logger.info("  STRONG SELL: %d", len(strong_sells))
 
     # Step 5: Output
-    print(f"\n[5/5] Top recommendations:\n")
+    logger.info("[5/5] Top recommendations (moderate tier):")
 
-    print("  === STRONG BUY ===")
     for s in sorted(strong_buys, key=lambda x: x["score"], reverse=True)[:5]:
-        print(f"  {s['symbol']:12s} ৳{s['ltp']:>8.2f}  {s['change_pct']:+5.1f}%  Score: {s['score']:+d}  Conf: {s['confidence']}/10  R:R {s['risk_reward']}")
-        print(f"                 Entry: ৳{s['entry']}  T1: ৳{s['target_1']}  T2: ৳{s['target_2']}  SL: ৳{s['stop_loss']}")
-        print(f"                 Reasons: {', '.join(s['reasons'][:4])}")
-        print()
+        logger.info(
+            "  %s ৳%.2f  %+.1f%%  Score: %+d  Conf: %d/10  R:R %.2f",
+            s["symbol"], s["ltp"], s["change_pct"], s["score"], s["confidence"], s["risk_reward"],
+        )
 
-    print("  === BUY ===")
-    for s in sorted(buys, key=lambda x: x["score"], reverse=True)[:5]:
-        print(f"  {s['symbol']:12s} ৳{s['ltp']:>8.2f}  {s['change_pct']:+5.1f}%  Score: {s['score']:+d}  R:R {s['risk_reward']}")
-        print(f"                 Reasons: {', '.join(s['reasons'][:3])}")
-        print()
-
-    print("  === SELL / AVOID ===")
-    for s in sorted(sells + strong_sells, key=lambda x: x["score"])[:5]:
-        print(f"  {s['symbol']:12s} ৳{s['ltp']:>8.2f}  {s['change_pct']:+5.1f}%  Score: {s['score']:+d}")
-        print(f"                 Reasons: {', '.join(s['reasons'][:3])}")
-        print()
-
-    # Save full report
     report = {
         "date": datetime.now().strftime("%Y-%m-%d"),
         "generated_at": datetime.now().isoformat(),
@@ -461,10 +568,10 @@ def main():
         json.dump(report, f, indent=2, default=str)
 
     elapsed = (datetime.now() - start).total_seconds()
-    print(f"{'='*70}")
-    print(f"  Full report: {path}")
-    print(f"  Completed in {elapsed:.0f}s")
-    print(f"{'='*70}")
+    logger.info("=" * 70)
+    logger.info("  Full report: %s", path)
+    logger.info("  Completed in %.0fs", elapsed)
+    logger.info("=" * 70)
 
     return report
 

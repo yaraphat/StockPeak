@@ -1,4 +1,4 @@
-import { getDb } from "./supabase";
+import { getDb } from "./postgres";
 import type { Pick, PickOutcome, Scorecard } from "./types";
 
 export async function getTodaysPicks(): Promise<Pick[]> {

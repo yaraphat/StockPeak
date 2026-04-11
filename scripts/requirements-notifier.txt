@@ -1,0 +1,8 @@
+apscheduler==3.10.4
+psycopg2-binary==2.9.10
+pytz==2024.2
+requests==2.32.3
+bdshare
+numpy
+pandas
+anthropic
