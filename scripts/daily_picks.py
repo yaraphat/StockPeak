@@ -24,6 +24,11 @@ import psycopg2
 import psycopg2.extras
 import requests
 
+# Optional multi-agent bull/bear debate — enabled via MULTI_AGENT=1 env var
+MULTI_AGENT_ENABLED = os.environ.get("MULTI_AGENT", "0") == "1"
+if MULTI_AGENT_ENABLED:
+    from multi_agent import analyze_candidates
+
 
 # --- Logging setup ---
 LOG_DIR = os.environ.get("STOCKPEAK_LOG_DIR", "/var/log/stockpeak")
@@ -124,19 +129,41 @@ def generate_picks(candidates: list[dict], market_summary: dict) -> dict:
     advancing = market_summary.get("advancing", 0)
     declining = market_summary.get("declining", 0)
 
-    candidates_text = "\n".join(
-        f"- {c['symbol']}: LTP ৳{c['ltp']}, RSI {c.get('rsi', 'N/A')}, "
-        f"Score {c.get('score', 0):+d}, Conf {c.get('confidence', 0)}/10, "
-        f"Vol ratio {c.get('volume_analysis', {}).get('ratio', 1):.1f}x, "
-        f"MACD {c.get('macd_data', {}).get('crossover', 'none')}, "
-        f"Signal: {c.get('signal', 'HOLD')}, R:R {c.get('risk_reward', 0):.1f}"
-        for c in candidates
-    )
+    candidate_lines = []
+    has_multi_agent = any(c.get("conviction") for c in candidates)
+
+    for c in candidates:
+        base = (
+            f"- {c['symbol']}: LTP ৳{c['ltp']}, RSI {c.get('rsi', 'N/A')}, "
+            f"Score {c.get('score', 0):+d}, Conf {c.get('confidence', 0)}/10, "
+            f"Vol ratio {c.get('volume_analysis', {}).get('ratio', 1):.1f}x, "
+            f"MACD {c.get('macd_data', {}).get('crossover', 'none')}, "
+            f"Signal: {c.get('signal', 'HOLD')}, R:R {c.get('risk_reward', 0):.1f}"
+        )
+        if c.get("conviction"):
+            base += (
+                f"\n  Multi-agent conviction: {c['conviction']}/10 | Verdict: {c.get('ma_verdict', 'HOLD')}"
+                f"\n  Bull: {c.get('bull_case', '')}"
+                f"\n  Bear: {c.get('bear_case', '')}"
+                f"\n  Synthesis: {c.get('ma_reasoning_en', '')}"
+            )
+        candidate_lines.append(base)
+
+    candidates_text = "\n".join(candidate_lines)
+
+    multi_agent_instruction = ""
+    if has_multi_agent:
+        multi_agent_instruction = (
+            "\nEach candidate has been reviewed by a bull researcher and a bear researcher. "
+            "Use their conviction scores (1-10) and synthesis as a strong signal — "
+            "prefer stocks where the bull case clearly outweighs the bear case. "
+            "Incorporate the Bengali synthesis (ma_reasoning_bn) in your reasoning_bn where relevant.\n"
+        )
 
     prompt = f"""You are a professional stock analysis AI for the Dhaka Stock Exchange (DSE), Bangladesh.
 
 Market context: {mood.upper()} day — {advancing} advancing, {declining} declining stocks.
-
+{multi_agent_instruction}
 These candidates have passed technical screening. Select the best 3 stocks to recommend to retail investors today.
 
 CANDIDATES (pre-screened by broker_agent.py):
@@ -412,7 +439,7 @@ def main():
     logger.info("Time: %s", datetime.now().isoformat())
 
     # Step 1: Load broker report (replaces scrape + calculate_indicators + technical_screen)
-    logger.info("[1/5] Loading broker agent report...")
+    logger.info("[1/6] Loading broker agent report...")
     report = load_broker_report()
     market_summary = report.get("market_summary", {})
 
@@ -426,15 +453,24 @@ def main():
     }
 
     # Step 2: Select top candidates
-    logger.info("[2/5] Selecting candidates...")
+    logger.info("[2/6] Selecting candidates...")
     candidates = select_candidates(report)
     if len(candidates) < 3:
         logger.warning("Only %d candidates — sending 'no picks today' notification", len(candidates))
         # TODO Phase 2: notification_engine handles this case
         sys.exit(1)
 
+    # Step 2.5 (optional): Multi-agent bull/bear dialectical analysis
+    if MULTI_AGENT_ENABLED:
+        logger.info("[2.5/6] Multi-agent bull/bear debate (MULTI_AGENT=1)...")
+        candidates = analyze_candidates(candidates, api_key=CLAUDE_API_KEY)
+        enriched = sum(1 for c in candidates if c.get("conviction"))
+        logger.info("  Enriched %d/%d candidates with conviction scores", enriched, len(candidates))
+    else:
+        logger.info("[2.5/6] Multi-agent skipped (set MULTI_AGENT=1 to enable)")
+
     # Step 3: Generate picks via Claude
-    logger.info("[3/5] Generating picks via Claude API...")
+    logger.info("[3/6] Generating picks via Claude API...")
     result = generate_picks(candidates, market_summary)
     picks = result.get("picks", [])
     mood = result.get("market_mood", "neutral")
@@ -447,7 +483,7 @@ def main():
     logger.info("Generated %d picks, mood: %s", len(picks), mood)
 
     # Step 4: Validate
-    logger.info("[4/5] Validating picks...")
+    logger.info("[4/6] Validating picks...")
     picks = validate_picks(picks, valid_tickers)
     if len(picks) < 1:
         logger.error("No valid picks after validation — pipeline stopping")
@@ -457,10 +493,11 @@ def main():
     logger.info("%d valid picks", len(picks))
 
     # Step 5: Store
-    logger.info("[5/5] Storing and delivering picks...")
+    logger.info("[5/6] Storing and delivering picks...")
     pick_ids = store_picks(picks, mood, mood_reason, risk_annotations_map)
 
     # Step 6: Deliver
+    logger.info("[6/6] Delivering picks...")
     send_telegram(picks, mood, mood_reason)
     send_emails(picks, mood, mood_reason)
 
