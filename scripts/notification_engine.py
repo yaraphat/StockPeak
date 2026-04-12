@@ -476,6 +476,23 @@ def run_outcome_tracker():
         logger.error("Failed to run outcome tracker: %s", e)
 
 
+def run_failure_analysis():
+    """Run failure_analysis.py after the outcome tracker resolves picks."""
+    import subprocess
+    script = os.path.join(os.path.dirname(__file__), "failure_analysis.py")
+    try:
+        result = subprocess.run(
+            ["python3", script],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            logger.error("Failure analysis failed:\n%s", result.stderr[-500:])
+        else:
+            logger.info("Failure analysis completed:\n%s", result.stdout[-500:])
+    except Exception as e:
+        logger.error("Failed to run failure analysis: %s", e)
+
+
 def job_eod_summary():
     """3:30 PM BDT — EOD summary with day's P&L and pick performance."""
     job_name = "eod_summary"
@@ -546,6 +563,10 @@ def job_eod_summary():
     # Run outcome tracker after EOD summary
     logger.info("[%s] Running outcome tracker...", job_name)
     run_outcome_tracker()
+
+    # Then write the daily failure-analysis log to the filesystem
+    logger.info("[%s] Running failure analysis...", job_name)
+    run_failure_analysis()
 
 
 def job_weekly_digest():

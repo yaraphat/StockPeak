@@ -126,3 +126,21 @@ INSERT INTO notification_schedule (job_name) VALUES
   ('eod_summary'),
   ('weekly_digest')
 ON CONFLICT (job_name) DO NOTHING;
+
+
+-- ============================================================
+-- dse_daily_snapshots: full broker_agent report per trading day
+-- Real DSE data + computed indicators, retained for historical analysis
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS dse_daily_snapshots (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  snapshot_date date NOT NULL UNIQUE,
+  market_summary JSONB NOT NULL,    -- {mood, advancing, declining, total_volume, ...}
+  stocks JSONB NOT NULL,            -- full per-stock indicators + risk_annotations
+  stock_count integer NOT NULL,
+  source text NOT NULL DEFAULT 'broker_agent',
+  captured_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_dse_snapshots_date ON dse_daily_snapshots(snapshot_date DESC);
