@@ -46,11 +46,91 @@ _ch.setFormatter(logging.Formatter("%(message)s"))
 logger.addHandler(_fh)
 logger.addHandler(_ch)
 
+import psycopg2
+import psycopg2.extras
+
 CLAUDE_API_KEY = os.environ["CLAUDE_API_KEY"]
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 MULTI_AGENT_ENABLED = os.environ.get("MULTI_AGENT", "0") == "1"
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 claude = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+
+
+def load_feedback_context() -> str | None:
+    """Load latest feedback report from DB and format as prompt context.
+    Returns None if no feedback available or DB not configured."""
+    if not DATABASE_URL:
+        return None
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        conn.autocommit = True
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT win_rate, avg_gain_pct, total_resolved,
+                   confidence_calibration, indicator_patterns,
+                   mood_performance, worst_patterns, ticker_performance
+            FROM feedback_reports
+            WHERE total_resolved >= 10
+            ORDER BY report_date DESC
+            LIMIT 1
+        """)
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if not row:
+            return None
+
+        lines = [
+            f"YOUR TRACK RECORD (based on {row['total_resolved']} resolved picks):",
+            f"- Overall win rate: {float(row['win_rate'])*100:.1f}%",
+            f"- Average gain: {float(row['avg_gain_pct']):+.2f}%",
+        ]
+
+        # Confidence calibration
+        cal = row.get("confidence_calibration") or {}
+        if isinstance(cal, str):
+            cal = json.loads(cal)
+        if cal:
+            lines.append("- Confidence calibration:")
+            for bucket, data in cal.items():
+                lines.append(f"  - Confidence {bucket}: {data['win_rate']*100:.0f}% win rate ({data['sample']} picks)")
+
+        # Worst patterns — critical warnings
+        worst = row.get("worst_patterns") or []
+        if isinstance(worst, str):
+            worst = json.loads(worst)
+        if worst:
+            lines.append("- WARNING — your worst-performing patterns:")
+            for wp in worst:
+                lines.append(f"  - {wp['condition']}: {wp['win_rate']*100:.0f}% win rate ({wp['sample']} picks)")
+
+        # Mood performance
+        mood = row.get("mood_performance") or {}
+        if isinstance(mood, str):
+            mood = json.loads(mood)
+        if mood:
+            lines.append("- Win rate by market mood:")
+            for m, data in mood.items():
+                if data.get("picks", 0) >= 3:
+                    lines.append(f"  - {m}: {data.get('win_rate', 0)*100:.0f}% ({data['picks']} picks)")
+
+        # Per-ticker track record for candidates (injected per-candidate in build_prompt)
+        # stored in module-level so build_prompt can access
+        global _ticker_performance
+        tp = row.get("ticker_performance") or {}
+        if isinstance(tp, str):
+            tp = json.loads(tp)
+        _ticker_performance = tp
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.warning("Failed to load feedback context: %s", e)
+        return None
+
+
+_ticker_performance: dict = {}
 
 
 def build_prompt(candidates: list[dict], market_summary: dict) -> str:
@@ -76,6 +156,13 @@ def build_prompt(candidates: list[dict], market_summary: dict) -> str:
                 f"\n  Bear: {c.get('bear_case', '')}"
                 f"\n  Synthesis: {c.get('ma_reasoning_en', '')}"
             )
+        # Per-ticker track record from feedback compiler
+        tp = _ticker_performance.get(c["symbol"])
+        if tp and tp.get("picks", 0) >= 2:
+            base += (
+                f"\n  Track record: {tp['picks']} past picks, "
+                f"{tp['wins']}W/{tp['losses']}L, avg gain {tp['avg_gain']:+.1f}%"
+            )
         candidate_lines.append(base)
 
     candidates_text = "\n".join(candidate_lines)
@@ -88,10 +175,22 @@ def build_prompt(candidates: list[dict], market_summary: dict) -> str:
             "prefer stocks where the bull case clearly outweighs the bear case.\n"
         )
 
+    # Load feedback context (track record, worst patterns, mood correlation)
+    feedback_ctx = load_feedback_context()
+    feedback_block = ""
+    if feedback_ctx:
+        feedback_block = f"""
+{feedback_ctx}
+
+Use your track record to calibrate your confidence scores. Avoid patterns that have
+historically underperformed. If a candidate's indicators match a worst-performing
+pattern, weigh that heavily against selecting it.
+"""
+
     return f"""You are a professional stock analysis AI for the Dhaka Stock Exchange (DSE), Bangladesh.
 
 Market context: {mood.upper()} day — {advancing} advancing, {declining} declining stocks.
-{multi_agent_instruction}
+{multi_agent_instruction}{feedback_block}
 These candidates have passed technical screening. Select the best 3 stocks to recommend to retail investors today.
 
 CANDIDATES (pre-screened by broker_agent.py):

@@ -493,6 +493,40 @@ def run_failure_analysis():
         logger.error("Failed to run failure analysis: %s", e)
 
 
+def run_feedback_compiler():
+    """Run feedback_compiler.py to aggregate performance stats."""
+    import subprocess
+    script = os.path.join(os.path.dirname(__file__), "feedback_compiler.py")
+    try:
+        result = subprocess.run(
+            ["python3", script],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            logger.error("Feedback compiler failed:\n%s", result.stderr[-500:])
+        else:
+            logger.info("Feedback compiler completed:\n%s", result.stdout[-500:])
+    except Exception as e:
+        logger.error("Failed to run feedback compiler: %s", e)
+
+
+def run_skill_proposal_engine():
+    """Run skill_proposal_engine.py to draft prompt change proposals."""
+    import subprocess
+    script = os.path.join(os.path.dirname(__file__), "skill_proposal_engine.py")
+    try:
+        result = subprocess.run(
+            ["python3", script],
+            capture_output=True, text=True, timeout=180,
+        )
+        if result.returncode != 0:
+            logger.error("Skill proposal engine failed:\n%s", result.stderr[-500:])
+        else:
+            logger.info("Skill proposal engine completed:\n%s", result.stdout[-500:])
+    except Exception as e:
+        logger.error("Failed to run skill proposal engine: %s", e)
+
+
 def job_eod_summary():
     """3:30 PM BDT — EOD summary with day's P&L and pick performance."""
     job_name = "eod_summary"
@@ -567,6 +601,14 @@ def job_eod_summary():
     # Then write the daily failure-analysis log to the filesystem
     logger.info("[%s] Running failure analysis...", job_name)
     run_failure_analysis()
+
+    # Compile performance stats (needs enough resolved picks)
+    logger.info("[%s] Running feedback compiler...", job_name)
+    run_feedback_compiler()
+
+    # Draft skill change proposal if patterns warrant it (rate-limited: 1/week)
+    logger.info("[%s] Running skill proposal engine...", job_name)
+    run_skill_proposal_engine()
 
 
 def job_weekly_digest():
