@@ -70,6 +70,128 @@ be closed for the system to improve over time.
 
 ---
 
+## Autonomous Feedback Loop — Approved Design (P0)
+
+The system runs fully autonomous end-to-end. The ONLY human gate is approving
+skill/prompt updates. Everything else runs on schedule without intervention.
+
+### System overview
+
+```
+AUTONOMOUS (daily, no human):
+  broker_agent.py
+    → prepare_candidates.py
+      → generate_picks_llm.py (or Claude Code skill)
+        → store_picks.py → DB + Telegram + email
+          → outcome_tracker.py (resolves open picks)
+            → failure_analysis.py (writes daily Markdown log)
+              → feedback_compiler.py [NEW] (aggregates structured stats)
+                → skill_proposal_engine.py [NEW] (drafts prompt change proposal)
+                  → writes to `skill_proposals` table
+
+HUMAN-GATED (admin reviews when ready):
+  Admin dashboard (Next.js page)
+    → sees pending proposals with side-by-side diff
+    → reads evidence (structured stats, never raw data)
+    → sees sample size warning if < 30 picks
+    → approve → skill file updated + git committed
+    → reject  → logged with reason, discarded
+    → defer   → stays in queue
+```
+
+### New component: `feedback_compiler.py`
+
+Runs after failure_analysis.py in the EOD job. Reads from `pick_outcomes` +
+`dse_daily_snapshots` + `picks`. Outputs ONLY structured stats to a
+`feedback_reports` table — never raw market data, never scraped text.
+
+Output shape:
+```json
+{
+  "period": "last_30_picks",
+  "win_rate": 0.58,
+  "avg_gain": 4.2,
+  "confidence_calibration": {"8-10": 0.55, "5-7": 0.62, "1-4": 0.40},
+  "indicator_patterns": [
+    {"condition": "RSI > 70 at pick time", "sample": 12, "win_rate": 0.25},
+    {"condition": "bearish mood + pick anyway", "sample": 8, "win_rate": 0.35}
+  ],
+  "repeat_ticker_performance": {"MONOSPOOL": {"picks": 3, "wins": 2}},
+  "worst_pattern": "RSI > 70 at pick time → 75% stop hit"
+}
+```
+
+Closes Gaps 1-5 and 8 from the context gaps section above.
+
+### New component: `skill_proposal_engine.py`
+
+Runs after feedback_compiler.py. Reads the structured stats. Makes ONE Claude
+API call to draft a specific, scoped prompt change. Writes a row to
+`skill_proposals` table. NEVER writes to skill files directly.
+
+### New DB table: `skill_proposals`
+
+```sql
+CREATE TABLE skill_proposals (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  skill_name text NOT NULL,
+  proposal_type text NOT NULL,  -- prompt_adjustment, threshold_change, new_rule
+  evidence_summary text NOT NULL,
+  current_text text NOT NULL,
+  proposed_text text NOT NULL,
+  reasoning text NOT NULL,
+  sample_size int NOT NULL,
+  status text NOT NULL DEFAULT 'pending',
+  reviewed_by uuid REFERENCES users(id),
+  reviewed_at timestamptz,
+  review_note text,
+  created_at timestamptz DEFAULT now()
+);
+```
+
+### New: admin review page (Next.js)
+
+- Route: `/admin/skill-proposals`
+- Shows pending proposals sorted by created_at desc
+- Each proposal card: skill name, proposal type, sample size, reasoning
+- Expand to see side-by-side diff (current_text vs proposed_text)
+- Sample size warning badge if < 30 picks
+- Action buttons: Approve / Reject (with note) / Defer
+- On approve: API route writes the skill file on the llm-pipeline branch,
+  commits to git with message "skill: apply proposal {id} — {reasoning}"
+- History tab: past approved/rejected proposals for audit trail
+
+### Safety rails (non-negotiable)
+
+1. **Sanitization boundary**: feedback_compiler outputs structured stats only.
+   No raw scraped data, no stock names from DSE feed, no user-generated text
+   ever reaches the proposal. Blocks prompt injection via market data.
+2. **Write separation**: skill_proposal_engine can NEVER write to skill files.
+   Only writes to the proposals table. Admin approval triggers the actual file write.
+3. **Sample size floor**: no proposal generated if fewer than 30 resolved picks
+   in the analysis window. Prevents noise-driven changes.
+4. **Git versioning**: every approved change is a git commit. Full rollback history.
+   If win rate drops after a change, revert the commit.
+5. **One proposal per skill per week**: rate-limited. The system can't spam 10
+   changes in one day based on the same data.
+
+### Implementation order
+
+- [ ] `feedback_compiler.py` — aggregate stats from picks + outcomes + snapshots
+- [ ] `feedback_reports` DB table — store compiled stats per run
+- [ ] Wire feedback_compiler into notification_engine.py EOD job (after failure_analysis)
+- [ ] `skill_proposal_engine.py` — draft proposals from feedback stats
+- [ ] `skill_proposals` DB table
+- [ ] Wire skill_proposal_engine into EOD job (after feedback_compiler)
+- [ ] Admin review page at `/admin/skill-proposals` (Next.js)
+- [ ] API route: POST `/api/admin/skill-proposals/:id/approve` — writes skill file + git commit
+- [ ] API route: POST `/api/admin/skill-proposals/:id/reject` — logs rejection
+- [ ] Inject feedback_compiler stats into generate_picks_llm.py prompt (closes Gaps 1-5, 8)
+- [ ] Surface all 3 risk tiers in prompt (closes Gap 6)
+- [ ] Portfolio-aware picks for personalized recommendations (closes Gap 7)
+
+---
+
 ## Data Quality (P0)
 
 - [ ] Run POC during live DSE market hours (10:00-14:30 BDT) to verify bdshare returns real-time vs cached data
