@@ -71,9 +71,18 @@ else
     log "Using external DATABASE_URL from environment."
 fi
 
-# ── 7. Claude Code needs ANTHROPIC_API_KEY (map from CLAUDE_API_KEY if needed) ─
-# Claude Code CLI uses ANTHROPIC_API_KEY. Accept either var so callers can use
-# whichever name they prefer — CLAUDE_API_KEY is the project convention.
+# ── 7. API key wiring ─────────────────────────────────────────────────────────
+# OpenRouter is the default LLM backend. OPEN_ROUTER_KEY is the expected var name.
+# Also accept OPENROUTER_API_KEY as an alias.
+if [ -n "$OPEN_ROUTER_KEY" ] && [ -z "$OPENROUTER_API_KEY" ]; then
+    export OPENROUTER_API_KEY="$OPEN_ROUTER_KEY"
+    log "OPENROUTER_API_KEY set from OPEN_ROUTER_KEY."
+elif [ -n "$OPENROUTER_API_KEY" ] && [ -z "$OPEN_ROUTER_KEY" ]; then
+    export OPEN_ROUTER_KEY="$OPENROUTER_API_KEY"
+    log "OPEN_ROUTER_KEY set from OPENROUTER_API_KEY."
+fi
+
+# Claude Code CLI uses ANTHROPIC_API_KEY. Accept CLAUDE_API_KEY as alias.
 if [ -n "$CLAUDE_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
     export ANTHROPIC_API_KEY="$CLAUDE_API_KEY"
     log "ANTHROPIC_API_KEY set from CLAUDE_API_KEY (for Claude Code CLI)."
@@ -82,16 +91,29 @@ elif [ -n "$ANTHROPIC_API_KEY" ] && [ -z "$CLAUDE_API_KEY" ]; then
     log "CLAUDE_API_KEY set from ANTHROPIC_API_KEY."
 fi
 
-if [ -z "$ANTHROPIC_API_KEY" ]; then
-    log "WARNING: Neither CLAUDE_API_KEY nor ANTHROPIC_API_KEY is set. Claude Code and the Python SDK will fail."
+# Auto-select backend based on which key is present (explicit PICKS_BACKEND wins)
+if [ -z "$PICKS_BACKEND" ]; then
+    if [ -n "$OPEN_ROUTER_KEY" ]; then
+        export PICKS_BACKEND="openrouter"
+        log "PICKS_BACKEND=openrouter (auto-detected from OPEN_ROUTER_KEY)."
+    elif [ -n "$ANTHROPIC_API_KEY" ]; then
+        export PICKS_BACKEND="claude-code"
+        log "PICKS_BACKEND=claude-code (auto-detected from ANTHROPIC_API_KEY)."
+    else
+        log "WARNING: No LLM API key set. Set OPEN_ROUTER_KEY or ANTHROPIC_API_KEY."
+    fi
 fi
 
 # Write env for child processes (sourced by supervisord program wrappers)
 cat > /run/stockpeak.env <<ENV
 DATABASE_URL=$DATABASE_URL
+OPEN_ROUTER_KEY=${OPEN_ROUTER_KEY:-}
+OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+OPENROUTER_MODEL=${OPENROUTER_MODEL:-anthropic/claude-sonnet-4.6}
 CLAUDE_API_KEY=${CLAUDE_API_KEY:-}
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
 CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+PICKS_BACKEND=${PICKS_BACKEND:-openrouter}
 NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-}
 NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
 GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
@@ -103,6 +125,8 @@ RESEND_API_KEY=${RESEND_API_KEY:-}
 MULTI_AGENT=${MULTI_AGENT:-0}
 FEEDBACK_MIN_SAMPLE=${FEEDBACK_MIN_SAMPLE:-30}
 STOCKPEAK_LOG_DIR=${STOCKPEAK_LOG_DIR:-/var/log/stockpeak}
+PYTHON_BIN=/opt/venv/bin/python3
+SCRIPTS_DIR=/app/scripts
 TZ=Asia/Dhaka
 ENV
 

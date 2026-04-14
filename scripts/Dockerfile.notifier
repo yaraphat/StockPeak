@@ -1,0 +1,29 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY scripts/requirements-notifier.txt .
+RUN pip install --no-cache-dir -r requirements-notifier.txt
+
+# Copy scripts
+COPY scripts/ ./scripts/
+
+# Create log directory
+RUN mkdir -p /var/log/stockpeak
+
+# Timezone: Asia/Dhaka
+ENV TZ=Asia/Dhaka
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Health check: verify scheduler process is alive
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+    CMD pgrep -f notification_engine.py || exit 1
+
+CMD ["python", "scripts/notification_engine.py"]
