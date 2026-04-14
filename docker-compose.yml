@@ -1,55 +1,39 @@
 version: "3.9"
 
-services:
-  # Next.js web app
-  app:
-    build:
-      context: ./app
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    environment:
-      DATABASE_URL: ${DATABASE_URL}
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      NEXTAUTH_URL: ${NEXTAUTH_URL}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+# Stock Peak — Single Container
+# Runs PostgreSQL + Next.js + Python notifier inside one image.
+#
+# Quick start:
+#   1. cp .env.example .env
+#   2. Fill in .env (at minimum: CLAUDE_API_KEY, NEXTAUTH_SECRET, NEXTAUTH_URL)
+#   3. cd app && npm run build && cd ..   # build Next.js (only needed once)
+#   4. docker compose up --build -d
+#   5. open http://localhost:3000
 
-  # Notification engine (APScheduler long-running process)
-  notifier:
+services:
+  stockpeak:
     build:
       context: .
-      dockerfile: scripts/Dockerfile.notifier
-    environment:
-      DATABASE_URL: ${DATABASE_URL}
-      CLAUDE_API_KEY: ${CLAUDE_API_KEY}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_CHANNEL_ID: ${TELEGRAM_CHANNEL_ID:-}
-      OWNER_TELEGRAM_ID: ${OWNER_TELEGRAM_ID:-}
-      RESEND_API_KEY: ${RESEND_API_KEY:-}
-      BROKER_REPORT_PATH: /tmp/stockpeak-broker-report.json
-      TZ: Asia/Dhaka
+      dockerfile: Dockerfile
+    image: stockpeak:latest
+    container_name: stockpeak
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
     volumes:
-      # Share broker report between pipeline runs and notifier
-      - broker_reports:/tmp
-      - notifier_logs:/var/log/stockpeak
-    restart: always
+      - pgdata:/var/lib/postgresql/data
+      - logs:/var/log/stockpeak
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "notification_engine.py"]
-      interval: 60s
+      test: ["CMD", "curl", "-fs", "http://localhost:3000/api/health"]
+      interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 30s
-    depends_on:
-      - app
+      retries: 5
+      start_period: 45s
 
 volumes:
-  broker_reports:
-  notifier_logs:
+  pgdata:
+    driver: local
+  logs:
+    driver: local

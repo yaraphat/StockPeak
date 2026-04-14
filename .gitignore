@@ -26,3 +26,10 @@ Thumbs.db
 
 # Pipeline state (local only)
 .idea-to-product-state.json
+.gstack/
+
+# Logs
+logs/
+
+# Docker runtime
+docker/stockpeak.env
