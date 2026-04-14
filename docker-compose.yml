@@ -1,27 +1,39 @@
 version: "3.9"
 
-# View-only deployment. The data pipeline (broker agent, picks generator,
-# notification engine, outcome tracker, failure analysis) lives on the
-# `llm-pipeline` branch and runs in a separate environment that writes to
-# the same PostgreSQL database this app reads from.
+# Stock Peak — Single Container
+# Runs PostgreSQL + Next.js + Python notifier inside one image.
+#
+# Quick start:
+#   1. cp .env.example .env
+#   2. Fill in .env (at minimum: CLAUDE_API_KEY, NEXTAUTH_SECRET, NEXTAUTH_URL)
+#   3. cd app && npm run build && cd ..   # build Next.js (only needed once)
+#   4. docker compose up --build -d
+#   5. open http://localhost:3000
 
 services:
-  app:
+  stockpeak:
     build:
-      context: ./app
+      context: .
       dockerfile: Dockerfile
+    image: stockpeak:latest
+    container_name: stockpeak
     ports:
       - "3000:3000"
-    environment:
-      DATABASE_URL: ${DATABASE_URL}
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      NEXTAUTH_URL: ${NEXTAUTH_URL}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    env_file:
+      - .env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - logs:/var/log/stockpeak
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-fs", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 45s
+
+volumes:
+  pgdata:
+    driver: local
+  logs:
+    driver: local

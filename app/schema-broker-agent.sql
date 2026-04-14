@@ -144,3 +144,57 @@ CREATE TABLE IF NOT EXISTS dse_daily_snapshots (
 );
 
 CREATE INDEX IF NOT EXISTS idx_dse_snapshots_date ON dse_daily_snapshots(snapshot_date DESC);
+
+
+-- ============================================================
+-- feedback_reports: compiled performance stats per analysis run
+-- Structured stats only — no raw market data, no scraped text.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS feedback_reports (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  report_date date NOT NULL,
+  period text NOT NULL,               -- 'last_30_picks', 'last_60_picks', etc.
+  total_resolved int NOT NULL,
+  win_rate numeric,
+  avg_gain_pct numeric,
+  confidence_calibration JSONB,       -- {"8-10": 0.55, "5-7": 0.62, "1-4": 0.40}
+  indicator_patterns JSONB,           -- [{condition, sample, win_rate}, ...]
+  mood_performance JSONB,             -- {bullish: {picks, win_rate}, bearish: {...}}
+  ticker_performance JSONB,           -- {TICKER: {picks, wins, losses, avg_gain}}
+  worst_patterns JSONB,               -- top 3 worst-performing patterns
+  raw_stats JSONB,                    -- full stats blob for audit
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_reports_date ON feedback_reports(report_date DESC);
+
+
+-- ============================================================
+-- skill_proposals: human-gated prompt change proposals
+-- Engine drafts, admin approves. Engine NEVER writes skill files.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS skill_proposals (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  skill_name text NOT NULL,
+  proposal_type text NOT NULL CHECK (proposal_type IN (
+    'prompt_adjustment', 'threshold_change', 'new_rule', 'remove_rule'
+  )),
+  evidence_summary text NOT NULL,     -- structured stats that triggered this
+  current_text text NOT NULL,         -- exact lines being changed
+  proposed_text text NOT NULL,        -- replacement text
+  reasoning text NOT NULL,            -- why, in plain language
+  sample_size int NOT NULL,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN (
+    'pending', 'approved', 'rejected', 'deferred'
+  )),
+  reviewed_by uuid REFERENCES users(id),
+  reviewed_at timestamptz,
+  review_note text,
+  applied_commit text,                -- git commit hash after approval
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_skill_proposals_status ON skill_proposals(status);
+CREATE INDEX IF NOT EXISTS idx_skill_proposals_created ON skill_proposals(created_at DESC);

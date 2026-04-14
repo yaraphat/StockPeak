@@ -1,0 +1,32 @@
+# Dependencies
+app/node_modules/
+**/__pycache__/
+**/*.pyc
+
+# Only need the standalone build output, not sources
+app/src/
+app/tsconfig*
+app/eslint.config.mjs
+app/postcss.config.mjs
+app/next.config.ts
+app/package*.json
+app/README.md
+app/CLAUDE.md
+app/AGENTS.md
+app/.env*
+
+# Git
+.git/
+.gitignore
+
+# Docs / dev artifacts
+docs/
+logs/
+.gstack/
+.idea-to-product-state.json
+*.md
+!app/schema*.sql
+
+# IDE
+.vscode/
+.idea/
