@@ -59,6 +59,17 @@ else
     log "Schema already applied, skipping (delete $MARKER to re-run migrations)."
 fi
 
+# ── 4b. Grant table privileges to app user ───────────────────────────────────
+# Schema files are applied as postgres superuser, so tables are owned by postgres.
+# The app connects as $DB_USER — grant it full access to all tables and sequences.
+log "Granting table privileges to $DB_USER..."
+su -s /bin/bash postgres -c "psql -d $DB_NAME -c \"
+  GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO $DB_USER;
+  GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO $DB_USER;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO $DB_USER;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO $DB_USER;
+\"" 2>&1 || true
+
 # ── 5. Stop temp PostgreSQL ───────────────────────────────────────────────────
 log "Stopping init PostgreSQL..."
 su -s /bin/bash postgres -c "$PG_BIN/pg_ctl -D $PGDATA stop -w -t 30" || true
@@ -104,6 +115,12 @@ if [ -z "$PICKS_BACKEND" ]; then
     fi
 fi
 
+# ── 7b. Auto-generate NEXTAUTH_SECRET if not set ──────────────────────────────
+if [ -z "$NEXTAUTH_SECRET" ]; then
+    export NEXTAUTH_SECRET=$(openssl rand -base64 32)
+    log "NEXTAUTH_SECRET auto-generated (set NEXTAUTH_SECRET in .env to pin it)."
+fi
+
 # Write env for child processes (sourced by supervisord program wrappers)
 cat > /run/stockpeak.env <<ENV
 DATABASE_URL=$DATABASE_URL
@@ -114,7 +131,7 @@ CLAUDE_API_KEY=${CLAUDE_API_KEY:-}
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
 CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
 PICKS_BACKEND=${PICKS_BACKEND:-openrouter}
-NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-}
+NEXTAUTH_SECRET=$NEXTAUTH_SECRET
 NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
 GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
 GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
