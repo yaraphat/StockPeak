@@ -155,9 +155,16 @@ export function StockSearch({ placeholder = "Search stocks...", autoFocus = fals
                     <div className="font-mono font-semibold text-sm text-[var(--color-primary)]">
                       {r.ticker}
                     </div>
-                    <div className="text-xs text-[var(--color-muted)] truncate">
-                      {r.company_name}
-                    </div>
+                    {r.company_name && r.company_name.toUpperCase() !== r.ticker.toUpperCase() && (
+                      <div className="text-xs text-[var(--color-muted)] truncate">
+                        {r.company_name}
+                      </div>
+                    )}
+                    {r.sector && (
+                      <div className="text-[10px] text-[var(--color-muted)] mt-0.5">
+                        {r.sector}
+                      </div>
+                    )}
                   </div>
                   {r.category && (
                     <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded flex-shrink-0 ${

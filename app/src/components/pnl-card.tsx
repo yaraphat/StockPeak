@@ -18,14 +18,19 @@ export function PnLCard({ pnl, insights, compact = false }: { pnl: PnL; insights
 
   if (pnl.total_holdings === 0) {
     return (
-      <div className="bg-white border border-[var(--color-border)] rounded-xl p-6 text-center">
+      <div className="bg-white border border-[var(--color-border)] rounded-2xl p-6 text-center"
+           style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04)" }}>
         <div className="text-sm font-medium text-[var(--foreground)] mb-1">No holdings yet</div>
         <p className="text-sm text-[var(--color-muted)] font-bengali mb-4">
           আপনার প্রথম স্টক যোগ করুন — P&L ট্র্যাকিং শুরু হবে
         </p>
         <Link
           href="/portfolio"
-          className="inline-flex items-center gap-2 bg-[var(--color-primary)] text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-[var(--color-primary-hover)] transition-colors"
+          className="inline-flex items-center gap-2 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-all hover:shadow-[0_4px_12px_rgba(0,102,204,0.3)] hover:-translate-y-0.5"
+          style={{
+            background: "linear-gradient(135deg, #0066CC 0%, #0052A3 100%)",
+            boxShadow: "0 2px 4px rgba(0,102,204,0.2), inset 0 1px 0 rgba(255,255,255,0.15)",
+          }}
         >
           Add a holding
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -38,10 +43,20 @@ export function PnLCard({ pnl, insights, compact = false }: { pnl: PnL; insights
 
   return (
     <div
-      className="bg-white border border-[var(--color-border)] rounded-xl overflow-hidden"
-      style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}
+      className="bg-white border border-[var(--color-border)] rounded-2xl overflow-hidden relative"
+      style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06)" }}
     >
-      <div className="p-5" style={{ background: `linear-gradient(180deg, ${bgTint} 0%, transparent 100%)` }}>
+      {/* Top accent line — subtle green or red based on direction */}
+      <div
+        className="h-0.5 opacity-70"
+        style={{ background: `linear-gradient(90deg, transparent 0%, ${color} 50%, transparent 100%)` }}
+      />
+      <div
+        className="p-5 relative"
+        style={{
+          background: `linear-gradient(180deg, ${bgTint} 0%, rgba(255,255,255,0) 70%)`,
+        }}
+      >
         <div className="flex items-start justify-between mb-1">
           <span className="text-xs font-medium text-[var(--color-muted)] uppercase tracking-wider">
             Portfolio value

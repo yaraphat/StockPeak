@@ -117,7 +117,7 @@ export default function PortfolioPage() {
           </button>
         </div>
 
-        {data && <PnLCard pnl={data.summary} insights={data.insights} />}
+        {data && data.holdings.length > 0 && <PnLCard pnl={data.summary} insights={data.insights} />}
 
         {/* Holdings table */}
         {data && data.holdings.length > 0 && (

@@ -155,26 +155,60 @@ export function SubscribeClient({ bkashNumber, nagadNumber, userPhone, accessSta
   }
 
   return (
-    <div className="bg-white border border-[var(--color-border)] rounded-xl overflow-hidden shadow-[0_4px_12px_rgba(0,0,0,0.04)]">
+    <div
+      className="bg-white rounded-2xl overflow-hidden relative"
+      style={{
+        border: "1px solid rgba(0,0,0,0.06)",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06), 0 24px 48px rgba(0,102,204,0.04)",
+      }}
+    >
+      {/* Top glossy accent */}
+      <div className="h-1 bg-gradient-to-r from-[#0066CC] via-[#0052A3] to-[#0066CC]" />
+
       {/* Subscription status header */}
       {accessStatus === "subscribed" && subExpiresAt && (
-        <div className="bg-[rgba(22,163,74,0.06)] border-b border-[rgba(22,163,74,0.2)] px-6 py-3">
-          <div className="text-sm">
-            <span className="font-medium text-[#16A34A]">Active subscription</span>
-            <span className="text-[var(--color-muted)] ml-2">
-              expires {new Date(subExpiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+        <div
+          className="border-b border-[rgba(22,163,74,0.2)] px-6 py-3"
+          style={{ background: "linear-gradient(90deg, rgba(22,163,74,0.08) 0%, rgba(22,163,74,0.02) 100%)" }}
+        >
+          <div className="text-sm flex items-center gap-2">
+            <span className="relative flex w-2 h-2">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-[#16A34A] opacity-75 animate-ping" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#16A34A]" />
+            </span>
+            <span className="font-semibold text-[#16A34A]">Active subscription</span>
+            <span className="text-[var(--color-muted)]">
+              · expires {new Date(subExpiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
             </span>
           </div>
-          <p className="text-xs text-[var(--color-muted)] mt-0.5 font-bengali">
+          <p className="text-xs text-[var(--color-muted)] mt-0.5 font-bengali ml-4">
             নিচের ধাপে আরও ৩০ দিন যোগ করুন
           </p>
         </div>
       )}
 
-      {/* Price */}
-      <div className="text-center py-6 border-b border-[var(--color-border-subtle)] bg-gradient-to-b from-[rgba(0,102,204,0.03)] to-transparent">
-        <div className="font-display text-5xl font-semibold tabular-nums">৳{PRICE}</div>
-        <div className="text-xs text-[var(--color-muted)] uppercase tracking-wider mt-1">per month</div>
+      {/* Price — with subtle radial glow */}
+      <div className="relative text-center py-8 border-b border-[var(--color-border-subtle)] overflow-hidden">
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: "radial-gradient(ellipse at center top, rgba(0,102,204,0.08) 0%, transparent 60%)",
+          }}
+        />
+        <div className="relative">
+          <div
+            className="font-display text-6xl font-bold tabular-nums"
+            style={{
+              background: "linear-gradient(180deg, #1C1917 0%, #44403C 100%)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              backgroundClip: "text",
+            }}
+          >
+            ৳{PRICE}
+          </div>
+          <div className="text-xs text-[var(--color-muted)] uppercase tracking-widest mt-2">per month · 30 days access</div>
+        </div>
       </div>
 
       {/* Step 1: choose provider */}
@@ -185,22 +219,41 @@ export function SubscribeClient({ bkashNumber, nagadNumber, userPhone, accessSta
         </div>
         <div className="grid grid-cols-2 gap-3">
           {[
-            { id: "bkash" as const, name: "bKash", color: "#E2136E" },
-            { id: "nagad" as const, name: "Nagad", color: "#EA7020" },
-          ].map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setProvider(p.id)}
-              className={`p-4 border-2 rounded-lg transition-all text-left ${
-                provider === p.id
-                  ? "border-[var(--color-primary)] bg-[rgba(0,102,204,0.03)]"
-                  : "border-[var(--color-border)] hover:border-[var(--color-muted)]"
-              }`}
-            >
-              <div className="font-semibold text-lg" style={{ color: p.color }}>{p.name}</div>
-              <div className="text-xs text-[var(--color-muted)]">Send from your app</div>
-            </button>
-          ))}
+            { id: "bkash" as const, name: "bKash", color: "#E2136E", tint: "rgba(226,19,110,0.04)" },
+            { id: "nagad" as const, name: "Nagad", color: "#EA7020", tint: "rgba(234,112,32,0.04)" },
+          ].map((p) => {
+            const active = provider === p.id;
+            return (
+              <button
+                key={p.id}
+                onClick={() => setProvider(p.id)}
+                className={`group p-4 rounded-xl transition-all text-left relative overflow-hidden ${
+                  active ? "-translate-y-0.5" : "hover:-translate-y-0.5"
+                }`}
+                style={{
+                  border: `2px solid ${active ? p.color : "var(--color-border)"}`,
+                  background: active
+                    ? `linear-gradient(135deg, ${p.tint} 0%, rgba(255,255,255,0.5) 100%)`
+                    : "#ffffff",
+                  boxShadow: active
+                    ? `0 4px 12px ${p.tint.replace("0.04", "0.15")}`
+                    : "0 1px 2px rgba(0,0,0,0.04)",
+                }}
+              >
+                {active && (
+                  <svg
+                    className="absolute top-3 right-3"
+                    width="18" height="18" viewBox="0 0 24 24" fill={p.color}
+                  >
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M9 12l2 2 4-4" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                  </svg>
+                )}
+                <div className="font-bold text-xl" style={{ color: p.color }}>{p.name}</div>
+                <div className="text-xs text-[var(--color-muted)] mt-0.5">Send from your app</div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -250,7 +303,11 @@ export function SubscribeClient({ bkashNumber, nagadNumber, userPhone, accessSta
         <button
           onClick={handleConfirm}
           disabled={submitting || !senderPhone.trim()}
-          className="w-full bg-[var(--color-primary)] text-white font-semibold text-sm py-3 rounded-lg hover:bg-[var(--color-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="w-full text-white font-semibold text-sm py-3.5 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:shadow-[0_8px_24px_rgba(0,102,204,0.3)] hover:-translate-y-0.5 disabled:hover:translate-y-0 disabled:hover:shadow-none"
+          style={{
+            background: "linear-gradient(135deg, #0066CC 0%, #0052A3 100%)",
+            boxShadow: "0 2px 4px rgba(0,102,204,0.2), inset 0 1px 0 rgba(255,255,255,0.15)",
+          }}
         >
           {submitting ? "Confirming..." : `I've sent ৳${PRICE} — verify and activate`}
         </button>
