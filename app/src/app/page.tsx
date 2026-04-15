@@ -1,33 +1,6 @@
 import Link from "next/link";
 import { StockSearch } from "@/components/stock-search";
 
-const samplePicks = [
-  {
-    ticker: "DAFODILCOM",
-    nameBn: "ড্যাফোডিল কমিউনিকেশনস",
-    price: 85.1,
-    target: 93.0,
-    gain: 9.28,
-    confidence: 8,
-  },
-  {
-    ticker: "EGEN",
-    nameBn: "ইজেনারেশন লিমিটেড",
-    price: 22.1,
-    target: 24.0,
-    gain: 8.6,
-    confidence: 7,
-  },
-  {
-    ticker: "TILIL",
-    nameBn: "তিতাস গ্যাস ট্রান্সমিশন",
-    price: 45.9,
-    target: 50.0,
-    gain: 8.93,
-    confidence: 6,
-  },
-];
-
 export default function Home() {
   return (
     <main className="relative">
@@ -90,16 +63,18 @@ export default function Home() {
             ৭ দিন ফ্রি ট্রায়াল শুরু করুন
           </Link>
           <Link
-            href="#picks"
+            href="#proof"
             className="border border-[var(--color-border)] font-semibold px-6 py-3 rounded-lg hover:bg-[var(--color-surface)] hover:border-[var(--color-muted)] transition-all bg-white/50 backdrop-blur-sm"
           >
-            Sample Picks দেখুন
+            Track Record দেখুন
           </Link>
         </div>
       </section>
 
-      {/* Sample Picks — glossy card with layered shadows */}
-      <section id="picks" className="px-6 pb-16 max-w-3xl mx-auto">
+      {/* Proof section — scorecard (aggregate) + locked teaser (no picks given away) */}
+      <section id="proof" className="px-6 pb-16 max-w-3xl mx-auto space-y-4">
+
+        {/* Scorecard — aggregate stats, no individual picks */}
         <div
           className="bg-white rounded-2xl overflow-hidden relative"
           style={{
@@ -107,97 +82,142 @@ export default function Home() {
             border: "1px solid rgba(0,0,0,0.05)",
           }}
         >
-          {/* Top accent line */}
           <div className="h-0.5 bg-gradient-to-r from-transparent via-[var(--color-primary)] to-transparent opacity-60" />
-
-          <div className="flex justify-between items-center px-6 py-4 border-b border-[var(--color-border-subtle)]">
-            <div>
-              <h2 className="font-display text-xl font-semibold">Today&apos;s Picks</h2>
-              <p className="text-[11px] text-[var(--color-muted)] mt-0.5">AI-analyzed DSE stocks</p>
-            </div>
-            <span
-              className="text-[11px] font-medium px-2.5 py-1 rounded-full"
-              style={{
-                background: "linear-gradient(135deg, rgba(0,102,204,0.08), rgba(0,102,204,0.03))",
-                color: "#0066CC",
-                border: "1px solid rgba(0,102,204,0.15)",
-              }}
-            >
-              Sample Preview
-            </span>
+          <div className="px-6 py-5 border-b border-[var(--color-border-subtle)]">
+            <h2 className="font-display text-xl font-semibold">Our Track Record</h2>
+            <p className="text-[11px] text-[var(--color-muted)] mt-1">
+              Aggregate outcomes across all our AI-generated DSE picks
+            </p>
           </div>
 
-          {/* Market Mood with gradient */}
-          <div
-            className="flex items-center gap-3 px-6 py-3 border-b border-[var(--color-border-subtle)]"
-            style={{ background: "linear-gradient(90deg, rgba(22,163,74,0.08) 0%, rgba(22,163,74,0.02) 100%)" }}
-          >
-            <span className="relative flex w-2 h-2">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-[var(--color-success)] opacity-75 animate-ping" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--color-success)]" />
-            </span>
-            <span className="font-semibold text-[var(--color-success)] text-sm">Bullish</span>
-            <span className="text-sm text-[var(--color-muted)]">Banking sector momentum + positive DSEX trend</span>
-          </div>
-
-          {/* Picks with glossy hover */}
-          <div className="p-4 space-y-3">
-            {samplePicks.map((pick) => (
+          <div className="grid grid-cols-3 divide-x divide-[var(--color-border-subtle)]">
+            <div className="p-6 text-center">
               <div
-                key={pick.ticker}
-                className="border border-[var(--color-border)] rounded-xl p-4 transition-all hover:shadow-md hover:border-[var(--color-primary)]/30 hover:-translate-y-0.5"
+                className="font-mono text-4xl font-bold tabular-nums"
                 style={{
-                  background: "linear-gradient(135deg, #ffffff 0%, #fafaf9 100%)",
+                  background: "linear-gradient(180deg, #16A34A 0%, #15803D 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
                 }}
               >
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <span className="font-mono text-[var(--color-primary)] font-semibold text-sm">{pick.ticker}</span>
-                    <p className="font-bengali text-xs text-[var(--color-muted)]">{pick.nameBn}</p>
-                  </div>
-                  <div className="text-right font-mono tabular-nums text-sm">
-                    <div className="font-semibold">৳{pick.price.toFixed(2)}</div>
-                    <div className="text-xs text-[var(--color-muted)]">Target: ৳{pick.target.toFixed(2)}</div>
-                  </div>
-                </div>
-                <div className="flex justify-between items-center pt-2 border-t border-[var(--color-border-subtle)]">
-                  <span className="text-[var(--color-success)] font-semibold text-sm flex items-center gap-1">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <path d="M7 14l5-5 5 5" />
-                    </svg>
-                    +{pick.gain}% upside
-                  </span>
-                  <span className="text-xs text-[var(--color-muted)] font-mono flex items-center gap-1.5">
-                    <span
-                      className="w-1.5 h-1.5 rounded-full"
-                      style={{ background: pick.confidence >= 7 ? "#16A34A" : "#D97706" }}
-                    />
-                    {pick.confidence}/10 {pick.confidence >= 7 ? "High" : "Moderate"}
-                  </span>
-                </div>
+                62%
               </div>
-            ))}
+              <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-1">Hit Rate</div>
+            </div>
+            <div className="p-6 text-center">
+              <div className="font-mono text-4xl font-bold tabular-nums">43</div>
+              <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-1">Total Picks</div>
+            </div>
+            <div className="p-6 text-center">
+              <div
+                className="font-mono text-4xl font-bold tabular-nums"
+                style={{
+                  background: "linear-gradient(180deg, #16A34A 0%, #15803D 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                }}
+              >
+                +7.2%
+              </div>
+              <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-1">Avg Gain</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Locked teaser — "today's picks are behind the paywall" */}
+        <div
+          className="relative bg-white rounded-2xl overflow-hidden"
+          style={{
+            border: "1px solid rgba(0,102,204,0.2)",
+            boxShadow: "0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,102,204,0.08)",
+          }}
+        >
+          <div className="px-6 py-5 border-b border-[var(--color-border-subtle)] flex items-center justify-between">
+            <div>
+              <h3 className="font-display text-lg font-semibold">Today&apos;s Picks</h3>
+              <p className="text-[11px] text-[var(--color-muted)] mt-0.5">Updated every trading day at 10:30 AM BDT</p>
+            </div>
+            <span
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-full"
+              style={{
+                background: "linear-gradient(135deg, rgba(0,102,204,0.1) 0%, rgba(0,102,204,0.04) 100%)",
+                color: "#0066CC",
+                border: "1px solid rgba(0,102,204,0.2)",
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <rect x="3" y="11" width="18" height="11" rx="2"/>
+                <path d="M7 11V7a5 5 0 0110 0v4"/>
+              </svg>
+              Pro only
+            </span>
           </div>
 
-          {/* Scorecard with gradient bg */}
-          <div
-            className="mx-4 mb-4 p-5 rounded-xl grid grid-cols-3 gap-4 text-center"
-            style={{
-              background: "linear-gradient(135deg, rgba(248,246,244,0.8) 0%, rgba(255,255,255,0.4) 100%)",
-              border: "1px solid rgba(0,0,0,0.04)",
-            }}
-          >
-            <div>
-              <div className="font-mono text-2xl font-semibold text-[var(--color-success)] tabular-nums">62%</div>
-              <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-0.5">Hit Rate</div>
-            </div>
-            <div className="border-x border-[var(--color-border-subtle)]">
-              <div className="font-mono text-2xl font-semibold tabular-nums">43</div>
-              <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-0.5">Total Picks</div>
-            </div>
-            <div>
-              <div className="font-mono text-2xl font-semibold text-[var(--color-success)] tabular-nums">+7.2%</div>
-              <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-0.5">Avg Gain</div>
+          {/* Blurred preview — shows the shape of the product without giving away picks */}
+          <div className="relative p-4 space-y-2">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="rounded-xl p-4 flex items-center gap-4"
+                style={{
+                  background: "linear-gradient(135deg, rgba(248,246,244,0.9) 0%, rgba(255,255,255,0.5) 100%)",
+                  border: "1px solid rgba(0,0,0,0.04)",
+                  filter: "blur(4px) saturate(0.6)",
+                  opacity: 0.7,
+                  userSelect: "none",
+                }}
+                aria-hidden="true"
+              >
+                <div className="flex-1">
+                  <div className="h-3 w-24 bg-[var(--color-muted)]/30 rounded mb-2" />
+                  <div className="h-2 w-40 bg-[var(--color-muted)]/20 rounded" />
+                </div>
+                <div className="text-right">
+                  <div className="h-4 w-16 bg-[var(--color-muted)]/30 rounded mb-1" />
+                  <div className="h-2 w-20 bg-[var(--color-muted)]/20 rounded" />
+                </div>
+                <div className="h-6 w-20 bg-[#16A34A]/20 rounded-full" />
+              </div>
+            ))}
+
+            {/* CTA overlay */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div
+                className="pointer-events-auto bg-white rounded-xl p-6 text-center max-w-xs"
+                style={{
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.08), 0 24px 48px rgba(0,102,204,0.1)",
+                  border: "1px solid rgba(0,102,204,0.2)",
+                }}
+              >
+                <div
+                  className="w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center"
+                  style={{
+                    background: "linear-gradient(135deg, #0066CC 0%, #0052A3 100%)",
+                    boxShadow: "0 4px 12px rgba(0,102,204,0.3)",
+                  }}
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2"/>
+                    <path d="M7 11V7a5 5 0 0110 0v4"/>
+                  </svg>
+                </div>
+                <h4 className="font-semibold text-sm mb-1">Today&apos;s picks are for Pro subscribers</h4>
+                <p className="text-xs text-[var(--color-muted)] font-bengali mb-4">
+                  ৭ দিন ফ্রি ট্রায়াল শুরু করুন — কার্ড লাগবে না
+                </p>
+                <Link
+                  href="/signup"
+                  className="block text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-all hover:shadow-[0_4px_12px_rgba(0,102,204,0.3)]"
+                  style={{
+                    background: "linear-gradient(135deg, #0066CC 0%, #0052A3 100%)",
+                    boxShadow: "0 2px 4px rgba(0,102,204,0.2), inset 0 1px 0 rgba(255,255,255,0.15)",
+                  }}
+                >
+                  Start free trial
+                </Link>
+              </div>
             </div>
           </div>
         </div>
