@@ -6,6 +6,7 @@ import { getUserAccess, hasActiveAccess } from "@/lib/access";
 import { StockChartClient } from "./chart-client";
 import { StockSearch } from "@/components/stock-search";
 import { AppHeader } from "@/components/app-header";
+import { AnalysisPanel } from "@/components/analysis-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -174,12 +175,29 @@ export default async function StockPage({ params }: { params: Promise<{ ticker: 
         </div>
 
         {/* Chart */}
-        <div className="bg-white border border-[var(--color-border)] rounded-xl p-6">
+        <div className="bg-white border border-[var(--color-border)] rounded-xl p-6 mb-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-display text-lg font-semibold">Price history</h3>
           </div>
           <StockChartClient ticker={ticker} paid={paid} loggedIn={!!userId} />
         </div>
+
+        {/* Analysis panel — gated to Analyst tier */}
+        {userId && <AnalysisPanel ticker={ticker} />}
+        {!userId && (
+          <div className="bg-white rounded-2xl p-6 text-center"
+               style={{ border: "1px solid rgba(0,102,204,0.15)", boxShadow: "0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,102,204,0.06)" }}>
+            <h3 className="font-display text-lg font-semibold mb-2">Want AI analysis + trade plan for {ticker}?</h3>
+            <p className="text-sm text-[var(--color-muted)] mb-4">
+              Sign up free to try our Analyst tier — signals, entry zones, stop-loss ladders, position sizing for every DSE stock.
+            </p>
+            <Link href="/signup"
+                  className="inline-block text-white text-sm font-semibold px-5 py-2.5 rounded-lg"
+                  style={{ background: "linear-gradient(135deg, #0066CC 0%, #0052A3 100%)", boxShadow: "0 4px 12px rgba(0,102,204,0.3)" }}>
+              Start 7-day free trial
+            </Link>
+          </div>
+        )}
 
         {stock.category === "Z" && (
           <div className="mt-4 bg-[rgba(220,38,38,0.06)] border border-[rgba(220,38,38,0.2)] rounded-xl p-4">

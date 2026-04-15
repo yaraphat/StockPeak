@@ -7,6 +7,13 @@
 import { getDb } from "./postgres";
 
 export type AccessStatus = "subscribed" | "trial" | "grace" | "expired";
+export type Tier = "entry" | "analyst";
+
+/** Ordered from least → most features. Used for rank comparisons. */
+export const TIER_RANK: Record<Tier, number> = {
+  entry: 1,
+  analyst: 2,
+};
 
 export interface UserAccess {
   userId: string;
@@ -18,6 +25,10 @@ export interface UserAccess {
   trialDaysRemaining: number | null;
   /** Days until subscription expires (negative = already expired) */
   subscriptionDaysRemaining: number | null;
+  /** Currently active tier — 'entry' during trial, actual tier when subscribed, null when expired */
+  currentTier: Tier | null;
+  /** Numeric rank of current tier (0 = none) */
+  tierRank: number;
 }
 
 export async function getUserAccess(userId: string): Promise<UserAccess | null> {
@@ -44,7 +55,15 @@ export async function getUserAccess(userId: string): Promise<UserAccess | null> 
     subscriptionDaysRemaining: subExpiresAt
       ? Math.ceil((subExpiresAt.getTime() - now.getTime()) / 86400000)
       : null,
+    currentTier: (r.current_tier as Tier) ?? null,
+    tierRank: Number(r.tier_rank ?? 0),
   };
+}
+
+/** True if user's tier rank is >= the required tier's rank. */
+export function hasTier(access: UserAccess | null, requiredTier: Tier): boolean {
+  if (!access || !hasActiveAccess(access)) return false;
+  return access.tierRank >= TIER_RANK[requiredTier];
 }
 
 /** True if user can access premium features (picks, full charts, P&L) */
@@ -109,4 +128,24 @@ export async function requireAuth(): Promise<{ userId: string; access: UserAcces
   const userId = user.id as string;
   const access = await getUserAccess(userId);
   return { userId, access };
+}
+
+/** Tier-gated: requires active access AND at least the specified tier rank. */
+export async function requireTier(requiredTier: Tier): Promise<AccessGate> {
+  const gate = await requireActiveAccess();
+  if ("error" in gate) return gate;
+  if (!hasTier(gate.access, requiredTier)) {
+    return {
+      error: NextResponse.json(
+        {
+          error: "Higher tier required",
+          current_tier: gate.access.currentTier,
+          required_tier: requiredTier,
+          upgrade_url: `/subscribe?tier=${requiredTier}`,
+        },
+        { status: 402 }
+      ),
+    };
+  }
+  return gate;
 }
