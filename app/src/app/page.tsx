@@ -41,8 +41,8 @@ export default function Home() {
           স্টক পিক পান
         </h1>
         <p className="font-bengali text-lg text-[var(--color-muted)] max-w-xl mx-auto mb-8 leading-relaxed">
-          AI বিশ্লেষণের মাধ্যমে প্রতিদিন সকাল ৭টায় ৩টি সেরা DSE স্টক পিক পান।
-          বাই জোন, টার্গেট, স্টপ-লস এবং বিস্তারিত বিশ্লেষণসহ।
+          AI বিশ্লেষণের মাধ্যমে প্রতিদিন সকাল ১০:৩০টায় ৩টি সেরা DSE স্টক পিক পান।
+          বাই জোন, টার্গেট, স্টপ-লস, পোর্টফোলিও P&L ট্র্যাকিং এবং বিস্তারিত বিশ্লেষণসহ।
         </p>
         <div className="flex gap-3 justify-center flex-wrap">
           <Link
@@ -123,9 +123,9 @@ export default function Home() {
         <h2 className="font-display text-2xl font-semibold mb-8 text-center">কিভাবে কাজ করে</h2>
         <div className="grid sm:grid-cols-3 gap-6">
           {[
-            { step: "১", title: "সকাল ৭টা", desc: "AI ৪০০+ DSE স্টক বিশ্লেষণ করে সেরা ৩টি বাছাই করে" },
-            { step: "২", title: "ইমেইল + টেলিগ্রাম", desc: "বাই জোন, টার্গেট, স্টপ-লস এবং বিশ্লেষণসহ পিক পান" },
-            { step: "৩", title: "ট্র্যাক রেকর্ড", desc: "প্রতিটি পিকের ফলাফল স্বয়ংক্রিয়ভাবে ট্র্যাক করা হয়" },
+            { step: "১", title: "সকাল ১০:৩০টা", desc: "AI ৪০০+ DSE স্টক বিশ্লেষণ করে সেরা ৩টি বাছাই করে" },
+            { step: "২", title: "ইন-অ্যাপ নোটিফিকেশন", desc: "ব্রাউজার নোটিফিকেশনে সাথে সাথে জানতে পারবেন — বাই জোন, টার্গেট, স্টপ-লস" },
+            { step: "৩", title: "পোর্টফোলিও ট্র্যাক", desc: "আপনার হোল্ডিংসের P&L স্বয়ংক্রিয়ভাবে হিসাব হয়" },
           ].map((item) => (
             <div key={item.step} className="text-center">
               <div className="w-10 h-10 rounded-full bg-[var(--color-primary)] text-white font-display font-bold text-lg flex items-center justify-center mx-auto mb-3">
@@ -158,13 +158,13 @@ export default function Home() {
             <span className="absolute -top-3 left-6 bg-[var(--color-primary)] text-white text-xs font-semibold px-3 py-1 rounded-full">Popular</span>
             <h3 className="font-semibold text-lg mb-1">Pro</h3>
             <div className="font-display text-3xl font-bold mb-4">
-              ৳২৯৯<span className="text-base font-normal text-[var(--color-muted)]">/মাস</span>
+              ৳২৬০<span className="text-base font-normal text-[var(--color-muted)]">/মাস</span>
             </div>
             <ul className="space-y-2 text-sm text-[var(--color-muted)] mb-6 font-bengali">
               <li>৩টি পিক / দিন + বিশ্লেষণ</li>
-              <li>মার্কেট মুড ইন্ডিকেটর</li>
-              <li>ইমেইল + টেলিগ্রাম ডেলিভারি</li>
-              <li>সাপ্তাহিক রিপোর্ট</li>
+              <li>পোর্টফোলিও P&L ট্র্যাকিং</li>
+              <li>স্টক সার্চ + ২ বছরের চার্ট</li>
+              <li>ব্রাউজার নোটিফিকেশন</li>
               <li>ট্র্যাক রেকর্ড অ্যাক্সেস</li>
             </ul>
             <Link href="/signup" className="block text-center bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-2.5 rounded-lg transition-opacity text-sm">
