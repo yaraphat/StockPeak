@@ -46,18 +46,35 @@ su -s /bin/bash postgres -c "psql -c \"SELECT 1 FROM pg_roles WHERE rolname='$DB
 su -s /bin/bash postgres -c "psql -tc \"SELECT 1 FROM pg_database WHERE datname='$DB_NAME'\" | grep -q 1 \
     || psql -c \"CREATE DATABASE $DB_NAME OWNER $DB_USER;\""
 
-# ── 4. Apply schema files (errors on existing tables are non-fatal) ───────────
-if [ ! -f "$MARKER" ]; then
-    log "Applying schema migrations..."
-    for f in $(ls "$SCHEMA_DIR"/*.sql | sort); do
-        log "  applying $f..."
-        su -s /bin/bash postgres -c "psql -d $DB_NAME -f $f" 2>&1 || true
-    done
-    touch "$MARKER"
-    log "Schema applied."
-else
-    log "Schema already applied, skipping (delete $MARKER to re-run migrations)."
-fi
+# ── 4. Apply schema files with migration tracking (task #34) ─────────────────
+# schema_migrations table tracks applied files. Replaces the old marker-file pattern
+# which silently skipped schema changes on redeploy.
+log "Ensuring schema_migrations table exists..."
+su -s /bin/bash postgres -c "psql -d $DB_NAME -c \"
+  CREATE TABLE IF NOT EXISTS schema_migrations (
+    filename text PRIMARY KEY,
+    applied_at timestamptz DEFAULT now()
+  );
+\"" 2>&1 || true
+
+log "Applying pending schema migrations..."
+for f in $(ls "$SCHEMA_DIR"/*.sql | sort); do
+    base=$(basename "$f")
+    already_applied=$(su -s /bin/bash postgres -c "psql -d $DB_NAME -tAc \"SELECT 1 FROM schema_migrations WHERE filename='$base'\"" 2>/dev/null)
+    if [ -z "$already_applied" ]; then
+        log "  applying $base..."
+        if su -s /bin/bash postgres -c "psql -d $DB_NAME -v ON_ERROR_STOP=1 -f $f" 2>&1; then
+            su -s /bin/bash postgres -c "psql -d $DB_NAME -c \"INSERT INTO schema_migrations (filename) VALUES ('$base')\"" 2>&1 || true
+            log "  ✓ $base applied."
+        else
+            log "  ✗ $base FAILED — not marked as applied. Fix and redeploy."
+        fi
+    else
+        log "  ✓ $base already applied."
+    fi
+done
+# Legacy marker cleanup
+[ -f "$MARKER" ] && rm -f "$MARKER"
 
 # ── 4b. Grant table privileges to app user ───────────────────────────────────
 # Schema files are applied as postgres superuser, so tables are owned by postgres.
@@ -102,6 +119,8 @@ elif [ -n "$ANTHROPIC_API_KEY" ] && [ -z "$CLAUDE_API_KEY" ]; then
     log "CLAUDE_API_KEY set from ANTHROPIC_API_KEY."
 fi
 
+# Claude Code CLI removed 2026-04-15 — Python picks generator uses OpenRouter directly.
+
 # Auto-select backend based on which key is present (explicit PICKS_BACKEND wins)
 if [ -z "$PICKS_BACKEND" ]; then
     if [ -n "$OPEN_ROUTER_KEY" ]; then
@@ -129,6 +148,8 @@ OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
 OPENROUTER_MODEL=${OPENROUTER_MODEL:-anthropic/claude-sonnet-4.6}
 CLAUDE_API_KEY=${CLAUDE_API_KEY:-}
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
+ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-}
 CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
 PICKS_BACKEND=${PICKS_BACKEND:-openrouter}
 NEXTAUTH_SECRET=$NEXTAUTH_SECRET

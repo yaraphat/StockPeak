@@ -26,6 +26,8 @@ import psycopg2
 import psycopg2.extras
 import requests
 
+from db_notify import broadcast_notification, user_notification
+
 try:
     from apscheduler.schedulers.blocking import BlockingScheduler
     from apscheduler.triggers.cron import CronTrigger
@@ -36,6 +38,11 @@ except ImportError:
 import pytz
 
 BDT = pytz.timezone("Asia/Dhaka")
+
+# Tickers already alerted today for exceptional opportunities.
+# Resets on process restart (daily via supervisord restart or nightly).
+_exceptional_alerted_today: set[str] = set()
+_exceptional_alerted_date: str = ""  # tracks which calendar date the set belongs to
 
 # --- Logging ---
 LOG_DIR = "/var/log/stockpeak"
@@ -301,41 +308,41 @@ def job_pre_market_brief():
     strong_buys = [s for s in report.get("stocks", []) if s.get("signal") == "STRONG BUY"]
     top_picks = sorted(strong_buys, key=lambda x: x.get("score", 0), reverse=True)[:3]
 
-    lines = [
-        "📊 *Stock Peak — Pre-Market Brief*",
-        f"📅 {datetime.now(BDT).strftime('%A, %B %d, %Y')}",
-        "",
-        f"{mood_emoji} *Market Mood: {mood.title()}*",
-        f"Advancing: {summary.get('advancing', '?')} | Declining: {summary.get('declining', '?')}",
-        f"Total turnover: ৳{summary.get('total_turnover_mn', 0):.0f}M",
-        "",
-    ]
+    today_str = datetime.now(BDT).strftime("%A, %B %d, %Y")
+    mood_label = mood.title()
 
     if picks:
-        lines.append("*আজকের পিক (Today's Picks):*")
-        for p in picks[:3]:
-            lines.extend([
-                f"• *{p['ticker']}* — Buy ৳{p['buy_zone']:.2f} | Target ৳{p['target']:.2f} | Stop ৳{p['stop_loss']:.2f}",
-                f"  _{p.get('reasoning_bn', '')}_",
-            ])
+        pick_lines = " | ".join(
+            f"{p['ticker']} ৳{p['buy_zone']:.2f}→৳{p['target']:.2f}"
+            for p in picks[:3]
+        )
+        body = f"{mood_emoji} বাজার {mood_label} — {pick_lines}"
+        data = {
+            "mood": mood,
+            "advancing": summary.get("advancing"),
+            "declining": summary.get("declining"),
+            "picks": [{"ticker": p["ticker"], "buy_zone": str(p["buy_zone"]), "target": str(p["target"])} for p in picks[:3]],
+        }
     elif top_picks:
-        lines.append("*Watchlist (STRONG BUY সংকেত):*")
-        for s in top_picks:
-            lines.append(f"• *{s['symbol']}* ৳{s['ltp']:.2f} — Score {s.get('score', 0):+d}")
+        pick_lines = " | ".join(f"{s['symbol']} ({s.get('score', 0):+d})" for s in top_picks)
+        body = f"{mood_emoji} বাজার {mood_label} — Watchlist: {pick_lines}"
+        data = {"mood": mood, "watchlist": [s["symbol"] for s in top_picks]}
     else:
-        lines.append("_আজ কোনো স্ট্রং সংকেত নেই। বাজার পর্যবেক্ষণ করুন।_")
+        body = f"{mood_emoji} বাজার {mood_label} — আজ কোনো স্ট্রং সংকেত নেই।"
+        data = {"mood": mood}
 
-    lines.extend([
-        "",
-        "_Market opens 10:00 AM BDT_",
-        "_Stock Peak — শিক্ষামূলক AI বিশ্লেষণ_",
-    ])
-
-    success = send_telegram_message("\n".join(lines))
-    status = "success" if success else "error"
-    log_notification(job_name, 1 if success else 0)
+    count = broadcast_notification(
+        DATABASE_URL,
+        ntype="pre_market_brief",
+        title=f"Pre-Market Brief — {today_str}",
+        body=body,
+        data=data,
+        severity="info",
+    )
+    status = "success" if count >= 0 else "error"
+    log_notification(job_name, count)
     record_last_run(job_name, status)
-    logger.info("[%s] Done — %s", job_name, status)
+    logger.info("[%s] Done — notified %d users", job_name, count)
 
 
 def job_intraday_monitor():
@@ -410,6 +417,8 @@ def job_intraday_monitor():
                 alerts.append({
                     "type": "stop_loss_hit",
                     "severity": "critical",
+                    "title": f"{ticker} — Stop Loss Hit",
+                    "body": f"Current ৳{ltp:.2f} has hit your stop ৳{stop:.2f}. বিক্রি করার কথা বিবেচনা করুন।",
                     "msg": f"🚨 *{ticker} STOP LOSS HIT*\nCurrent: ৳{ltp:.2f} | Stop: ৳{stop:.2f}\n_বিক্রি করার কথা বিবেচনা করুন।_",
                 })
             # Approaching stop (within 2%)
@@ -417,6 +426,8 @@ def job_intraday_monitor():
                 alerts.append({
                     "type": "approaching_stop",
                     "severity": "warning",
+                    "title": f"{ticker} — Approaching Stop Loss",
+                    "body": f"Current ৳{ltp:.2f} is within 2% of your stop ৳{stop:.2f}.",
                     "msg": f"⚠️ *{ticker} approaching stop-loss*\nCurrent: ৳{ltp:.2f} | Stop: ৳{stop:.2f}",
                 })
 
@@ -425,6 +436,8 @@ def job_intraday_monitor():
                 alerts.append({
                     "type": "target_hit",
                     "severity": "info",
+                    "title": f"{ticker} — Target Hit!",
+                    "body": f"Current ৳{ltp:.2f} has reached your target ৳{target:.2f}. মুনাফা বুক করার কথা বিবেচনা করুন।",
                     "msg": f"🎯 *{ticker} TARGET HIT!*\nCurrent: ৳{ltp:.2f} | Target: ৳{target:.2f}\n_মুনাফা বুক করার কথা বিবেচনা করুন।_",
                 })
 
@@ -438,11 +451,26 @@ def job_intraday_monitor():
                 alerts.append({
                     "type": "price_move_5pct",
                     "severity": "warning" if change_pct < 0 else "info",
+                    "title": f"{ticker} — {change_pct:+.1f}% Move",
+                    "body": f"{direction} {ticker} moved {change_pct:+.1f}% today. Current ৳{ltp:.2f}.",
                     "msg": f"{direction} *{ticker}* {change_pct:+.1f}% today\nCurrent: ৳{ltp:.2f}",
                 })
 
             for alert in alerts:
-                send_telegram_message(alert["msg"], chat_id=chat_id)
+                # Write to in-app notifications (always)
+                user_notification(
+                    DATABASE_URL,
+                    user_id=str(h["user_id"]),
+                    ntype=alert["type"],
+                    title=alert["title"],
+                    body=alert["body"],
+                    ticker=ticker,
+                    data={"ltp": ltp, "stop": stop, "target": target, "buy": buy},
+                    severity=alert["severity"],
+                )
+                # Also send personal Telegram DM if the user has it configured
+                if chat_id:
+                    send_telegram_message(alert["msg"], chat_id=chat_id)
                 cur.execute("""
                     INSERT INTO alerts_log (user_id, alert_type, severity, message, channel, ticker)
                     VALUES (%s, %s, %s, %s, 'telegram', %s)
@@ -457,6 +485,117 @@ def job_intraday_monitor():
         logger.error("[%s] Error: %s", job_name, e)
         if conn:
             conn.close()
+
+
+def job_intraday_opportunity_scan():
+    """
+    Every 30 min 10:00-14:30 BDT — broadcast exceptional opportunities to all subscribers.
+
+    Scans the broker report for STRONG BUY signals with:
+      • score >= 6  AND
+      • volume_ratio >= 2.0 (volume spike — at least 2× daily average)  AND
+      • confidence >= 7  AND
+      • not already picked today (not in picks table for today)
+      • not already alerted this session (in-memory dedup per calendar date)
+
+    Sends one Telegram broadcast per qualifying ticker per day, then stops.
+    """
+    global _exceptional_alerted_today, _exceptional_alerted_date
+
+    job_name = "intraday_opportunity_scan"
+    now = datetime.now(BDT)
+    today = now.strftime("%Y-%m-%d")
+    logger.info("[%s] %s", job_name, now.strftime("%H:%M"))
+
+    if not is_market_open():
+        return
+
+    # Reset dedup set at start of each calendar day
+    if _exceptional_alerted_date != today:
+        _exceptional_alerted_today = set()
+        _exceptional_alerted_date = today
+
+    report = load_broker_report()
+    if report is None:
+        logger.info("[%s] No fresh broker report — skipping", job_name)
+        return
+
+    # Stocks already picked today — don't re-alert
+    conn = get_db()
+    picked_today: set[str] = set()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT ticker FROM picks WHERE date = %s", (today,))
+            picked_today = {row[0] for row in cur.fetchall()}
+            cur.close()
+            conn.close()
+        except Exception as e:
+            logger.warning("[%s] Could not query picks: %s", job_name, e)
+
+    # Identify exceptional stocks from broker report
+    candidates = []
+    for s in report.get("stocks", []):
+        symbol = s.get("symbol", "")
+        signal = s.get("signal", "")
+        score = s.get("score", 0)
+        confidence = s.get("confidence", 0)
+        volume_ratio = s.get("volume_ratio", 0)
+        change_pct = s.get("change_pct", 0)
+        ltp = s.get("ltp", 0)
+
+        if (
+            signal == "STRONG BUY"
+            and score >= 6
+            and confidence >= 7
+            and volume_ratio >= 2.0
+            and change_pct > 0
+            and symbol not in picked_today
+            and symbol not in _exceptional_alerted_today
+        ):
+            candidates.append({
+                "symbol": symbol,
+                "ltp": ltp,
+                "change_pct": change_pct,
+                "score": score,
+                "confidence": confidence,
+                "volume_ratio": volume_ratio,
+                "rsi": s.get("rsi", 0),
+            })
+
+    if not candidates:
+        logger.info("[%s] No exceptional opportunities found", job_name)
+        return
+
+    # Sort by combined score + volume_ratio descending, take top 3
+    candidates.sort(key=lambda x: x["score"] + x["volume_ratio"] * 0.5, reverse=True)
+    top = candidates[:3]
+
+    symbols_str = ", ".join(c["symbol"] for c in top)
+    body_parts = []
+    for c in top:
+        body_parts.append(
+            f"{c['symbol']} ৳{c['ltp']:.2f} ({c['change_pct']:+.1f}%) "
+            f"Score {c['score']:+d} Vol {c['volume_ratio']:.1f}×"
+        )
+    body = " | ".join(body_parts)
+
+    count = broadcast_notification(
+        DATABASE_URL,
+        ntype="intraday_opportunity",
+        title=f"Intraday Opportunity — {now.strftime('%H:%M')} BDT",
+        body=body,
+        ticker=top[0]["symbol"] if len(top) == 1 else None,
+        data={"stocks": top, "time": now.isoformat()},
+        severity="warning",
+    )
+    if count >= 0:
+        for c in top:
+            _exceptional_alerted_today.add(c["symbol"])
+        logger.info("[%s] Opportunity alert → %d users: %s", job_name, count, symbols_str)
+        log_notification(job_name, count)
+    else:
+        logger.error("[%s] DB insert failed", job_name)
 
 
 def run_outcome_tracker():
@@ -555,44 +694,32 @@ def job_eod_summary():
 
     picks = get_todays_picks_from_db()
 
-    lines = [
-        "📊 *Stock Peak — EOD Summary*",
-        f"📅 {datetime.now(BDT).strftime('%B %d, %Y')} | Market Close",
-        "",
-    ]
+    pick_summaries = []
+    for p in picks:
+        ticker = p["ticker"]
+        ltp = current_prices.get(ticker)
+        if ltp and p.get("buy_zone"):
+            pnl_pct = (ltp - float(p["buy_zone"])) / float(p["buy_zone"]) * 100
+            pick_summaries.append({"ticker": ticker, "entry": float(p["buy_zone"]), "ltp": ltp, "pnl_pct": round(pnl_pct, 2)})
 
-    if report:
-        lines.extend([
-            f"{mood_emoji} *Market closed {mood.title()}*",
-            "",
-        ])
-
-    if picks:
-        lines.append("*আজকের পিক পারফরম্যান্স:*")
-        for p in picks:
-            ticker = p["ticker"]
-            ltp = current_prices.get(ticker)
-            if ltp and p.get("buy_zone"):
-                pnl_pct = (ltp - float(p["buy_zone"])) / float(p["buy_zone"]) * 100
-                icon = "🟢" if pnl_pct > 0 else ("🔴" if pnl_pct < -1 else "⚪")
-                lines.append(
-                    f"{icon} *{ticker}* — Entry ৳{p['buy_zone']:.2f} → Current ৳{ltp:.2f} ({pnl_pct:+.1f}%)"
-                )
-            else:
-                lines.append(f"• *{ticker}* — Price data unavailable")
+    if pick_summaries:
+        perf_str = " | ".join(f"{s['ticker']} {s['pnl_pct']:+.1f}%" for s in pick_summaries)
+        body = f"{mood_emoji} বাজার {mood.title()} — {perf_str}"
     else:
-        lines.append("_আজ কোনো পিক ছিল না।_")
+        body = f"{mood_emoji} বাজার {mood.title()} — আজ কোনো পিক ছিল না।"
 
-    lines.extend([
-        "",
-        "_Stock Peak — শিক্ষামূলক AI বিশ্লেষণ, বিনিয়োগ পরামর্শ নয়_",
-    ])
-
-    success = send_telegram_message("\n".join(lines))
-    status = "success" if success else "error"
-    log_notification(job_name, 1 if success else 0)
+    count = broadcast_notification(
+        DATABASE_URL,
+        ntype="eod_summary",
+        title=f"EOD Summary — {datetime.now(BDT).strftime('%B %d, %Y')}",
+        body=body,
+        data={"mood": mood, "picks": pick_summaries},
+        severity="info",
+    )
+    status = "success" if count >= 0 else "error"
+    log_notification(job_name, count)
     record_last_run(job_name, status)
-    logger.info("[%s] Done — %s", job_name, status)
+    logger.info("[%s] Done — notified %d users", job_name, count)
 
     # Run outcome tracker after EOD summary
     logger.info("[%s] Running outcome tracker...", job_name)
@@ -642,41 +769,29 @@ def job_weekly_digest():
         hits = [p for p in closed if p["outcome"] == "target_hit"]
         hit_rate = len(hits) / len(closed) * 100 if closed else 0
 
-        lines = [
-            "📊 *Stock Peak — Weekly Digest*",
-            f"📅 Week ending {datetime.now(BDT).strftime('%B %d, %Y')}",
-            "",
-            f"*এই সপ্তাহ:* {len(weekly_picks)} পিক | Hit rate: {hit_rate:.0f}%",
-            "",
-        ]
-
-        if hits:
-            lines.append("*✅ Target Hit:*")
-            for p in hits[:5]:
-                lines.append(
-                    f"• {p['ticker']} — {p.get('gain_pct', 0):+.1f}% gain"
-                )
-            lines.append("")
-
         stop_hits = [p for p in closed if p["outcome"] == "stop_hit"]
-        if stop_hits:
-            lines.append("*🔴 Stop Hit:*")
-            for p in stop_hits[:3]:
-                lines.append(
-                    f"• {p['ticker']} — {p.get('gain_pct', 0):+.1f}%"
-                )
-            lines.append("")
+        body = (
+            f"এই সপ্তাহ: {len(weekly_picks)} পিক | Hit rate {hit_rate:.0f}% | "
+            f"✅ {len(hits)} targets | 🔴 {len(stop_hits)} stops"
+        )
 
-        lines.extend([
-            "_আগামী সপ্তাহেও বাজার পর্যবেক্ষণ করুন।_",
-            "_Stock Peak — শিক্ষামূলক AI বিশ্লেষণ_",
-        ])
-
-        success = send_telegram_message("\n".join(lines))
-        status = "success" if success else "error"
-        log_notification(job_name, 1 if success else 0)
+        count = broadcast_notification(
+            DATABASE_URL,
+            ntype="weekly_digest",
+            title=f"Weekly Digest — {datetime.now(BDT).strftime('%B %d, %Y')}",
+            body=body,
+            data={
+                "total_picks": len(weekly_picks),
+                "hit_rate": round(hit_rate, 1),
+                "target_hits": len(hits),
+                "stop_hits": len(stop_hits),
+            },
+            severity="info",
+        )
+        status = "success" if count >= 0 else "error"
+        log_notification(job_name, count)
         record_last_run(job_name, status)
-        logger.info("[%s] Done — %s", job_name, status)
+        logger.info("[%s] Done — notified %d users", job_name, count)
 
     except Exception as e:
         logger.error("[%s] Error: %s", job_name, e)
@@ -753,6 +868,21 @@ def main():
         ),
         id="intraday_monitor",
         name="Intraday Monitor",
+        replace_existing=True,
+        misfire_grace_time=120,
+    )
+
+    # Intraday opportunity scanner: same cadence — broadcasts exceptional STRONG BUY signals
+    scheduler.add_job(
+        job_intraday_opportunity_scan,
+        CronTrigger(
+            day_of_week="sun,mon,tue,wed,thu",
+            hour="10,11,12,13,14",
+            minute="5,35",  # offset by 5 min from monitor so they don't collide
+            timezone=BDT,
+        ),
+        id="intraday_opportunity_scan",
+        name="Intraday Opportunity Scanner",
         replace_existing=True,
         misfire_grace_time=120,
     )

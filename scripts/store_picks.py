@@ -20,6 +20,8 @@ import psycopg2
 import psycopg2.extras
 import requests
 
+from db_notify import broadcast_notification
+
 
 LOG_DIR = os.environ.get("STOCKPEAK_LOG_DIR", "/var/log/stockpeak")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -121,42 +123,64 @@ def store_picks(
     return pick_ids
 
 
-def send_telegram(picks: list[dict], mood: str, mood_reason: str):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
-        logger.info("Telegram not configured, skipping")
-        return
+def notify_picks(picks: list[dict], mood: str, mood_reason: str):
+    """Broadcast daily picks as in-app notifications. Also flash-alerts high-confidence picks."""
+    mood_emoji = {"bullish": "🟢", "neutral": "⚪", "bearish": "🔴"}.get(mood, "⚪")
+    date_str = datetime.now().strftime("%B %d, %Y")
 
-    mood_emoji = {"bullish": "🟢", "neutral": "⚪", "bearish": "🔴"}
-    emoji = mood_emoji.get(mood, "⚪")
+    # Daily picks broadcast
+    tickers_str = ", ".join(p["ticker"] for p in picks)
+    body = f"{mood_emoji} বাজার {mood.title()} — {tickers_str} | {mood_reason}"
+    count = broadcast_notification(
+        DATABASE_URL,
+        ntype="daily_picks",
+        title=f"আজকের পিক — {date_str}",
+        body=body,
+        data={
+            "mood": mood,
+            "picks": [
+                {
+                    "ticker": p["ticker"],
+                    "buy_zone": float(p["buy_zone"]),
+                    "target": float(p["target"]),
+                    "stop_loss": float(p["stop_loss"]),
+                    "confidence": int(p.get("confidence", 0)),
+                    "reasoning_bn": p.get("reasoning_bn", ""),
+                }
+                for p in picks
+            ],
+        },
+        severity="info",
+    )
+    logger.info("Daily picks notification → %d users", count)
 
-    lines = [
-        "📊 *Stock Peak Daily Picks*",
-        f"📅 {datetime.now().strftime('%B %d, %Y')}",
-        "",
-        f"{emoji} *Market Mood: {mood.title()}*",
-        f"_{mood_reason}_",
-        "",
-    ]
-    for i, pick in enumerate(picks, 1):
-        lines.extend([
-            f"*{i}. {pick['ticker']}*",
-            f"   Buy: ৳{pick['buy_zone']:.2f} | Target: ৳{pick['target']:.2f}",
-            f"   Stop: ৳{pick['stop_loss']:.2f} | Confidence: {pick['confidence']}/10",
-            f"   _{pick.get('reasoning_bn', '')}_",
-            "",
-        ])
-    lines.append("_Stock Peak - শিক্ষামূলক AI বিশ্লেষণ, বিনিয়োগ পরামর্শ নয়_")
-    text = "\n".join(lines)
-
-    try:
-        requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-            json={"chat_id": TELEGRAM_CHANNEL_ID, "text": text, "parse_mode": "Markdown"},
-            timeout=10,
+    # Exceptional opportunity flash alert (confidence >= 8)
+    exceptional = [p for p in picks if int(p.get("confidence", 0)) >= 8]
+    for p in exceptional:
+        gain_pct = (float(p["target"]) - float(p["buy_zone"])) / float(p["buy_zone"]) * 100
+        exc_body = (
+            f"Confidence {p['confidence']}/10 | "
+            f"Buy ৳{p['buy_zone']:.2f} → Target ৳{p['target']:.2f} ({gain_pct:+.1f}%) | "
+            f"Stop ৳{p['stop_loss']:.2f}"
         )
-        logger.info("Telegram message sent")
-    except Exception as e:
-        logger.error("Telegram send failed: %s", e)
+        broadcast_notification(
+            DATABASE_URL,
+            ntype="exceptional_opportunity",
+            title=f"Exceptional Opportunity — {p['ticker']}",
+            body=exc_body,
+            ticker=p["ticker"],
+            data={
+                "ticker": p["ticker"],
+                "buy_zone": float(p["buy_zone"]),
+                "target": float(p["target"]),
+                "stop_loss": float(p["stop_loss"]),
+                "confidence": int(p.get("confidence", 0)),
+                "gain_pct": round(gain_pct, 1),
+                "reasoning_bn": p.get("reasoning_bn", ""),
+            },
+            severity="warning",
+        )
+        logger.info("Exceptional opportunity alert → %s (confidence %d)", p["ticker"], p["confidence"])
 
 
 def send_emails(picks: list[dict], mood: str, mood_reason: str):
@@ -258,7 +282,7 @@ def main():
     store_picks(picks, pick_date, mood, mood_reason, risk_annotations_map)
 
     if not args.no_deliver:
-        send_telegram(picks, mood, mood_reason)
+        notify_picks(picks, mood, mood_reason)
         send_emails(picks, mood, mood_reason)
 
     logger.info("=== store_picks complete: %s ===", ", ".join(p["ticker"] for p in picks))

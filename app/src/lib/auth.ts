@@ -4,6 +4,33 @@ import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { getDb } from "./postgres";
 
+// Simple in-process login rate limiter: 10 attempts per IP per 15 min
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+function checkLoginRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const window = 15 * 60_000;
+  let entry = loginAttempts.get(ip);
+  if (!entry || entry.resetAt < now) {
+    entry = { count: 0, resetAt: now + window };
+    loginAttempts.set(ip, entry);
+  }
+  entry.count += 1;
+  return entry.count <= 10;
+}
+
+// Fetch a user's subscription + trial state for JWT claims
+async function fetchUserAccess(userId: string) {
+  const sql = getDb();
+  const rows = await sql`SELECT * FROM v_user_access WHERE user_id = ${userId}`;
+  if (rows.length === 0) return null;
+  return {
+    session_version: rows[0].session_version,
+    access_status: rows[0].access_status,
+    trial_ends_at: rows[0].trial_ends_at,
+    subscription_expires_at: rows[0].subscription_expires_at,
+  };
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -12,8 +39,16 @@ export const authOptions: NextAuthOptions = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         if (!credentials?.email || !credentials?.password) return null;
+
+        const ip =
+          (req?.headers?.["x-forwarded-for"] as string | undefined)?.split(",")[0].trim() ??
+          (req?.headers?.["x-real-ip"] as string | undefined) ??
+          "unknown";
+        if (!checkLoginRateLimit(ip)) {
+          throw new Error("Too many login attempts. Try again in 15 minutes.");
+        }
 
         const sql = getDb();
         const users = await sql`
@@ -48,14 +83,13 @@ export const authOptions: NextAuthOptions = {
       : []),
   ],
   callbacks: {
-    async jwt({ token, user, account }) {
+    async jwt({ token, user, account, trigger }) {
       if (user) {
         token.id = user.id;
         token.role = (user as unknown as Record<string, unknown>).role as string;
         token.trialEndsAt = (user as unknown as Record<string, unknown>).trialEndsAt as string;
       }
 
-      // Handle Google sign-in: create or find user in DB
       if (account?.provider === "google" && user?.email) {
         const sql = getDb();
         const existing = await sql`
@@ -78,23 +112,38 @@ export const authOptions: NextAuthOptions = {
         }
       }
 
+      // Refresh subscription claims on signin or explicit update() trigger
+      if (token.id && (user || trigger === "update")) {
+        const access = await fetchUserAccess(token.id as string);
+        if (access) {
+          token.sessionVersion = access.session_version;
+          token.accessStatus = access.access_status;
+          token.subscriptionExpiresAt = access.subscription_expires_at;
+        }
+      }
+
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as unknown as Record<string, unknown>).id = token.id;
-        (session.user as unknown as Record<string, unknown>).role = token.role;
-        (session.user as unknown as Record<string, unknown>).trialEndsAt = token.trialEndsAt;
+        const u = session.user as unknown as Record<string, unknown>;
+        u.id = token.id;
+        u.role = token.role;
+        u.trialEndsAt = token.trialEndsAt;
+        u.sessionVersion = token.sessionVersion;
+        u.accessStatus = token.accessStatus ?? "expired";
+        u.subscriptionExpiresAt = token.subscriptionExpiresAt;
       }
       return session;
     },
   },
   pages: {
     signIn: "/login",
-    newUser: "/dashboard",
+    newUser: "/welcome",
   },
   session: {
     strategy: "jwt",
+    maxAge: 24 * 60 * 60, // 24h — forces daily re-fetch of subscription state
   },
   secret: process.env.NEXTAUTH_SECRET,
 };

@@ -47,12 +47,8 @@ RUN python3 -m venv /opt/venv && \
 
 ENV PATH="/opt/venv/bin:$PATH"
 
-# ── Claude Code CLI ───────────────────────────────────────────────────────────
-# The pipeline uses `claude` as the agent for pick generation (Stage 2).
-# ANTHROPIC_API_KEY must be set at runtime (mapped from CLAUDE_API_KEY in entrypoint).
-RUN npm install -g @anthropic-ai/claude-code
-
 # ── Next.js standalone (pre-built — run `cd app && npm run build` first) ──────
+# Note: Claude Code CLI removed 2026-04-15. Python picks generator uses OpenRouter directly.
 WORKDIR /app
 COPY app/.next/standalone ./
 COPY app/.next/static ./.next/static
@@ -66,6 +62,8 @@ RUN mkdir -p /app/schema
 COPY app/schema.sql /app/schema/01-schema.sql
 COPY app/schema-portfolio.sql /app/schema/02-schema-portfolio.sql
 COPY app/schema-broker-agent.sql /app/schema/03-schema-broker-agent.sql
+COPY app/schema-notifications.sql /app/schema/04-schema-notifications.sql
+COPY app/schema-m1.sql /app/schema/05-schema-m1.sql
 
 # ── Docker helpers ────────────────────────────────────────────────────────────
 COPY docker/supervisord.conf /etc/supervisor/conf.d/stockpeak.conf

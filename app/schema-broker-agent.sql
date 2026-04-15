@@ -68,7 +68,8 @@ CREATE TABLE IF NOT EXISTS alerts_log (
     'stop_loss_hit', 'approaching_stop', 'target_hit',
     'drawdown_10', 'drawdown_15', 'drawdown_20',
     'high_correlation', 'volume_spike', 'price_move_5pct', 'price_move_10pct',
-    'circuit_breaker', 'pre_market_brief', 'eod_summary', 'weekly_digest'
+    'circuit_breaker', 'exceptional_opportunity',
+    'pre_market_brief', 'eod_summary', 'weekly_digest'
   )),
   ticker text,
   severity text NOT NULL DEFAULT 'info' CHECK (severity IN ('info', 'warning', 'critical', 'emergency')),
@@ -92,7 +93,7 @@ CREATE INDEX IF NOT EXISTS idx_alerts_log_delivered ON alerts_log(delivered_at);
 CREATE TABLE IF NOT EXISTS notification_log (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   notification_type text NOT NULL CHECK (notification_type IN (
-    'pre_market_brief', 'intraday_monitor', 'eod_summary', 'weekly_digest'
+    'pre_market_brief', 'intraday_monitor', 'intraday_opportunity_scan', 'eod_summary', 'weekly_digest'
   )),
   scheduled_for timestamptz NOT NULL,
   delivered_at timestamptz DEFAULT NULL,
@@ -123,6 +124,7 @@ CREATE TABLE IF NOT EXISTS notification_schedule (
 INSERT INTO notification_schedule (job_name) VALUES
   ('pre_market_brief'),
   ('intraday_monitor'),
+  ('intraday_opportunity_scan'),
   ('eod_summary'),
   ('weekly_digest')
 ON CONFLICT (job_name) DO NOTHING;
@@ -198,3 +200,56 @@ CREATE TABLE IF NOT EXISTS skill_proposals (
 
 CREATE INDEX IF NOT EXISTS idx_skill_proposals_status ON skill_proposals(status);
 CREATE INDEX IF NOT EXISTS idx_skill_proposals_created ON skill_proposals(created_at DESC);
+
+
+-- ============================================================
+-- Migrations: widen CHECK constraints for new notification types
+-- Safe to run on existing DBs — drops old constraint, adds new one.
+-- ============================================================
+
+DO $$
+BEGIN
+  -- notification_log: add intraday_opportunity_scan type
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'notification_log_notification_type_check'
+      AND conrelid = 'notification_log'::regclass
+  ) THEN
+    ALTER TABLE notification_log DROP CONSTRAINT notification_log_notification_type_check;
+  END IF;
+
+  ALTER TABLE notification_log
+    ADD CONSTRAINT notification_log_notification_type_check
+    CHECK (notification_type IN (
+      'pre_market_brief', 'intraday_monitor', 'intraday_opportunity_scan',
+      'eod_summary', 'weekly_digest'
+    ));
+
+  -- alerts_log: add exceptional_opportunity type
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'alerts_log_alert_type_check'
+      AND conrelid = 'alerts_log'::regclass
+  ) THEN
+    ALTER TABLE alerts_log DROP CONSTRAINT alerts_log_alert_type_check;
+  END IF;
+
+  ALTER TABLE alerts_log
+    ADD CONSTRAINT alerts_log_alert_type_check
+    CHECK (alert_type IN (
+      'stop_loss_hit', 'approaching_stop', 'target_hit',
+      'drawdown_10', 'drawdown_15', 'drawdown_20',
+      'high_correlation', 'volume_spike', 'price_move_5pct', 'price_move_10pct',
+      'circuit_breaker', 'exceptional_opportunity',
+      'pre_market_brief', 'eod_summary', 'weekly_digest'
+    ));
+
+  -- seed new job into notification_schedule
+  INSERT INTO notification_schedule (job_name)
+  VALUES ('intraday_opportunity_scan')
+  ON CONFLICT (job_name) DO NOTHING;
+
+EXCEPTION
+  WHEN others THEN
+    RAISE NOTICE 'Migration warning: %', SQLERRM;
+END $$;

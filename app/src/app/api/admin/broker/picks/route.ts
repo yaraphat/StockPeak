@@ -10,8 +10,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const date = req.nextUrl.searchParams.get("date");
-  const limit = Math.min(Number(req.nextUrl.searchParams.get("limit") ?? "20"), 100);
+  const dateRaw = req.nextUrl.searchParams.get("date");
+  const date = dateRaw && /^\d{4}-\d{2}-\d{2}$/.test(dateRaw) ? dateRaw : null;
+  const limit = Math.min(Math.max(1, Number(req.nextUrl.searchParams.get("limit") ?? "20")), 100);
   const sql = getDb();
 
   const rows = date
