@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { getDb } from "@/lib/postgres";
+import { requireActiveAccess } from "@/lib/access";
 
-// Per-user portfolio P&L. Pure arithmetic — no AI.
-// Uses latest close from stock_data (joined via LATERAL for cleanest plan).
+// Per-user portfolio P&L. Pro feature — requires active trial or subscription.
+// Portfolio CRUD (/api/portfolio) stays auth-only so users can always manage their data,
+// but the P&L calculation (price × qty with gain/loss tracking) is gated.
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  const userId = (session?.user as Record<string, unknown> | undefined)?.id as string | undefined;
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const gate = await requireActiveAccess();
+  if ("error" in gate) return gate.error;
+  const { userId } = gate;
 
   const sql = getDb();
 

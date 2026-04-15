@@ -54,11 +54,42 @@ export default function PortfolioPage() {
   const [showForm, setShowForm] = useState(false);
   const access = (session?.user as Record<string, unknown> | undefined)?.accessStatus as string | undefined;
 
+  const [paywalled, setPaywalled] = useState(false);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/portfolio/pnl");
-      if (res.ok) {
+      if (res.status === 402) {
+        setPaywalled(true);
+        // Fall back to raw holdings list (CRUD still works)
+        const rawRes = await fetch("/api/portfolio");
+        if (rawRes.ok) {
+          const raw = await rawRes.json();
+          setData({
+            holdings: (raw.holdings ?? []).map((h: Record<string, unknown>) => ({
+              id: h.id,
+              ticker: h.ticker,
+              company_name: null,
+              company_name_bn: null,
+              category: null,
+              quantity: Number(h.quantity),
+              buy_price: Number(h.buy_price),
+              invested: Number(h.quantity) * Number(h.buy_price),
+              current_price: null,
+              current_value: null,
+              price_date: null,
+              day_change_pct: null,
+              pnl: null,
+              pnl_pct: null,
+              is_stale: false,
+            })),
+            summary: { total_holdings: (raw.holdings ?? []).length, total_invested: 0, total_value: 0, total_pnl: 0, total_pnl_pct: 0, as_of: null },
+            insights: [],
+          });
+        }
+      } else if (res.ok) {
+        setPaywalled(false);
         const d = await res.json();
         setData(d);
       }
@@ -117,7 +148,22 @@ export default function PortfolioPage() {
           </button>
         </div>
 
-        {data && data.holdings.length > 0 && <PnLCard pnl={data.summary} insights={data.insights} />}
+        {data && data.holdings.length > 0 && !paywalled && <PnLCard pnl={data.summary} insights={data.insights} />}
+        {data && data.holdings.length > 0 && paywalled && (
+          <div className="bg-white border border-[var(--color-border)] rounded-xl overflow-hidden relative" style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+            <div className="p-5" style={{ filter: "blur(4px)", pointerEvents: "none", userSelect: "none" }}>
+              <div className="text-xs font-medium text-[var(--color-muted)] uppercase tracking-wider">Portfolio value</div>
+              <div className="font-display text-3xl font-semibold">৳━━━━</div>
+              <div className="mt-2 font-mono text-lg">P&L hidden</div>
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center bg-white/40 backdrop-blur-sm">
+              <Link href="/subscribe" className="text-white text-sm font-semibold px-4 py-2 rounded-lg"
+                style={{ background: "linear-gradient(135deg, #0066CC 0%, #0052A3 100%)", boxShadow: "0 4px 12px rgba(0,102,204,0.3)" }}>
+                Subscribe to unlock P&L
+              </Link>
+            </div>
+          </div>
+        )}
 
         {/* Holdings table */}
         {data && data.holdings.length > 0 && (

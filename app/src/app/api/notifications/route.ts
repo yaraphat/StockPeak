@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { getDb } from "@/lib/postgres";
+import { requireActiveAccess } from "@/lib/access";
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  const user = session?.user as Record<string, unknown> | undefined;
-  if (!user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Pro feature — notifications about picks/holdings are gated
+  const gate = await requireActiveAccess();
+  if ("error" in gate) return gate.error;
+  const { userId } = gate;
 
   const sql = getDb();
   const limit = Math.min(Number(req.nextUrl.searchParams.get("limit") ?? "30"), 100);
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     ? await sql`
         SELECT id, type, title, body, ticker, data, severity, read_at, created_at
         FROM notifications
-        WHERE user_id = ${user.id as string}
+        WHERE user_id = ${userId}
           AND read_at IS NULL
         ORDER BY created_at DESC
         LIMIT ${limit} OFFSET ${offset}
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     : await sql`
         SELECT id, type, title, body, ticker, data, severity, read_at, created_at
         FROM notifications
-        WHERE user_id = ${user.id as string}
+        WHERE user_id = ${userId}
         ORDER BY created_at DESC
         LIMIT ${limit} OFFSET ${offset}
       `;
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   const [countRow] = await sql`
     SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE read_at IS NULL)::int AS unread
     FROM notifications
-    WHERE user_id = ${user.id as string}
+    WHERE user_id = ${userId}
   `;
 
   return NextResponse.json({

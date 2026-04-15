@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { getScorecard } from "@/lib/db";
+import { requireActiveAccess } from "@/lib/access";
 
+// Detailed scorecard is a Pro feature. The aggregate numbers shown on the landing page
+// come from a separate static/marketing source, not this endpoint.
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const gate = await requireActiveAccess();
+  if ("error" in gate) return gate.error;
 
   try {
     const scorecard = await getScorecard();

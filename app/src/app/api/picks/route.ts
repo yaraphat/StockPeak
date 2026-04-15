@@ -1,20 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { getTodaysPicks, getPicksByDate } from "@/lib/db";
+import { requireActiveAccess } from "@/lib/access";
 
-// Simple date format guard — prevents unexpected DB queries
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // Pro feature — requires active trial or subscription (402 if expired)
+  const gate = await requireActiveAccess();
+  if ("error" in gate) return gate.error;
 
   const { searchParams } = new URL(request.url);
   const date = searchParams.get("date");
-
   if (date && !DATE_RE.test(date)) {
     return NextResponse.json({ error: "Invalid date format" }, { status: 400 });
   }

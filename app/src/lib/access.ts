@@ -58,3 +58,55 @@ export async function bumpSessionVersion(userId: string): Promise<void> {
   const sql = getDb();
   await sql`UPDATE users SET session_version = session_version + 1 WHERE id = ${userId}`;
 }
+
+/**
+ * API route guard. Returns the userId if the user has active access (trial or subscribed),
+ * or a NextResponse with the appropriate status code.
+ *
+ * Usage in route.ts:
+ *   const gate = await requireActiveAccess();
+ *   if ("error" in gate) return gate.error;
+ *   const { userId, access } = gate;
+ */
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "./auth";
+
+export type AccessGate =
+  | { error: NextResponse; userId?: undefined; access?: undefined }
+  | { userId: string; access: UserAccess; error?: undefined };
+
+export async function requireActiveAccess(): Promise<AccessGate> {
+  const session = await getServerSession(authOptions);
+  const user = session?.user as Record<string, unknown> | undefined;
+  if (!user?.id) {
+    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  const userId = user.id as string;
+  const access = await getUserAccess(userId);
+  if (!access || !hasActiveAccess(access)) {
+    return {
+      error: NextResponse.json(
+        {
+          error: "Subscription required",
+          access_status: access?.accessStatus ?? "none",
+          upgrade_url: "/subscribe",
+        },
+        { status: 402 }  // 402 Payment Required
+      ),
+    };
+  }
+  return { userId, access };
+}
+
+/** Loosely-gated — requires auth but not active subscription. Returns userId or error. */
+export async function requireAuth(): Promise<{ userId: string; access: UserAccess | null } | { error: NextResponse }> {
+  const session = await getServerSession(authOptions);
+  const user = session?.user as Record<string, unknown> | undefined;
+  if (!user?.id) {
+    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  const userId = user.id as string;
+  const access = await getUserAccess(userId);
+  return { userId, access };
+}

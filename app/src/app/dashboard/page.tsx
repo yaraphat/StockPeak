@@ -160,11 +160,29 @@ export default async function DashboardPage() {
           />
         )}
 
-        {/* Two-column: P&L + Today's picks */}
+        {/* Two-column: P&L + Today's picks — both gated to active access */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr,1.5fr] gap-4">
-          {/* P&L */}
+          {/* P&L — Pro feature */}
           <div>
-            {pnl && <PnLCard pnl={pnl.summary} insights={pnl.insights} />}
+            {canSeePicks && pnl && <PnLCard pnl={pnl.summary} insights={pnl.insights} />}
+            {!canSeePicks && (
+              <div className="bg-white border border-[var(--color-border)] rounded-xl overflow-hidden relative" style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                <div className="p-5" style={{ filter: "blur(4px)", pointerEvents: "none", userSelect: "none" }}>
+                  <div className="text-xs font-medium text-[var(--color-muted)] uppercase tracking-wider">Portfolio value</div>
+                  <div className="font-display text-3xl font-semibold">৳━━━━</div>
+                  <div className="mt-2 font-mono text-lg">+৳━━ (+━%)</div>
+                </div>
+                <div className="absolute inset-0 flex items-center justify-center bg-white/40 backdrop-blur-sm">
+                  <Link
+                    href="/subscribe"
+                    className="text-white text-sm font-semibold px-4 py-2 rounded-lg"
+                    style={{ background: "linear-gradient(135deg, #0066CC 0%, #0052A3 100%)", boxShadow: "0 4px 12px rgba(0,102,204,0.3)" }}
+                  >
+                    Subscribe to unlock P&L
+                  </Link>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Today's picks */}
