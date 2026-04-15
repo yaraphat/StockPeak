@@ -1,266 +1,307 @@
-# Stock Peak — TODO
+# Stock Peak — Tracker
 
-## Architecture (completed)
-
-- [x] Split pipeline into 3 isolated stages: prepare_candidates → generate_picks_llm → store_picks
-- [x] Isolate all LLM code to `generate_picks_llm.py` (single anthropic import point)
-- [x] Separate branches: `main` (view-only Next.js app) / `llm-pipeline` (data pipeline)
-- [x] DSE daily snapshots persisted to DB (`dse_daily_snapshots`) + filesystem cold archive
-- [x] Failure analysis logging to `logs/failure-analysis/YYYY-MM-DD.md` after EOD
-- [x] Multi-agent bull/bear dialectical debate (`multi_agent.py`, opt-in via MULTI_AGENT=1)
-- [x] Outcome tracker resolves target_hit / stop_hit / expired from OHLCV data
-- [x] Risk-tier classification: conservative / moderate / aggressive per stock
-- [x] Risk profiling questionnaire + 30-day lock on re-assessment
+**Last updated:** 2026-04-15
+**Current state:** Infrastructure + auth + notification backbone built. Pipeline has never run end-to-end. Organized around **tiered milestone launches** with pricing, not a single-product ship.
+**Next unlock:** Run pipeline end-to-end on next trading day (2026-04-19) while M1 commercial prep proceeds in parallel.
 
 ---
 
-## Broker Context Gaps — Technical Debt (P0)
+## The product
 
-The LLM generates picks in a single-day vacuum. It sees ~33 current indicator fields
-but has zero awareness of its own track record or historical patterns. These gaps must
-be closed for the system to improve over time.
+Stock Peak launches as **tiered pricing**, sequencing product milestones against revenue validation. Each tier delivers a discrete capability band. The AI "consultant" framing is earned by shipping evolving intelligence — not claimed upfront before evidence.
 
-### Gap 1: No outcome feedback loop
-- LLM never sees past pick results (target_hit / stop_hit / expired)
-- Data exists: `pick_outcomes` table (exit_price, gain_pct, exit_date, holding days)
-- Impact: can't learn "my MACD-crossover picks hit stop 40% of the time"
-- Fix: query last N resolved picks, pass aggregate stats + per-ticker history into prompt
+**Pricing tiers (planned):**
 
-### Gap 2: No historical self-awareness
-- LLM doesn't know its own win rate, average gain, or confidence calibration
-- Data exists: computable from `picks` + `pick_outcomes` join
-- Impact: confidence scores are uncalibrated (8/10 picks may perform same as 5/10)
-- Fix: pass rolling win rate, avg gain, confidence-to-outcome correlation into prompt
+| Tier | Price | Capability | Milestone |
+|---|---|---|---|
+| **Entry** | **৳260/mo** | **3 daily picks + portfolio CRUD + P&L + stock search/timeline** | **M1** |
+| Premium | TBD | Risk-tiered personalized signals (same stock = BUY/HOLD/SELL per tier) | M2 |
+| Pro | TBD | Portfolio intelligence: VaR, correlation warnings, drawdown escalation | M3 |
+| Analyst | TBD | Multi-specialist deep analysis (fundamental + macro + sentiment per pick) | M4 |
+| Elite | TBD | Evolving system — demonstrable improvement over time via per-skill attribution | M5 |
+| Expert+ | TBD | Deeper AI analysis + periodic reports + relationship features (still AI-research-service framing with disclaimer) | M6 |
 
-### Gap 3: No per-ticker track record
-- LLM doesn't know "I picked MONOSPOOL 3 times, hit target twice, stop once"
-- Data exists: `picks` table filtered by ticker + `pick_outcomes`
-- Impact: may repeatedly recommend a stock it consistently gets wrong
-- Fix: for each candidate, include past picks for that ticker with outcomes
-
-### Gap 4: No indicator-to-outcome correlation
-- LLM can't see "when RSI was 55-60 and I picked, 70% hit target; when RSI > 70, only 30%"
-- Data exists: `dse_daily_snapshots` (indicators on pick date) + `pick_outcomes`
-- Impact: no evidence-based indicator thresholds, relies purely on textbook rules
-- Fix: pre-compute indicator-outcome correlation stats, pass as context
-
-### Gap 5: Failure analysis not fed back
-- Detailed failure post-mortems exist at `logs/failure-analysis/YYYY-MM-DD.md`
-- Contains: original reasoning, indicators at pick time, what went wrong
-- Currently: write-only. Nothing reads these back into the generation prompt.
-- Fix: parse recent failure logs, extract recurring patterns, inject as warnings
-
-### Gap 6: Only moderate risk tier surfaced
-- All 3 tiers (conservative / moderate / aggressive) are computed and stored in `risk_annotations` JSONB
-- LLM prompt only surfaces the moderate-tier score and signal
-- Impact: can't tailor picks per user risk profile
-- Fix: pass all 3 tier classifications into prompt, let LLM reason per tier
-
-### Gap 7: No portfolio context
-- LLM picks 3 stocks in isolation with no awareness of user holdings
-- Data exists: `portfolio_snapshots` (holdings, correlation matrix, VaR, drawdown)
-- Impact: may recommend stocks highly correlated with user's existing positions
-- Fix: for personalized picks, pass portfolio summary + correlation warnings
-
-### Gap 8: No market-condition-to-outcome correlation
-- LLM sees today's market mood but doesn't know "when mood was bearish and I picked anyway, stops hit 60%"
-- Data exists: `dse_daily_snapshots.market_summary` + `pick_outcomes`
-- Impact: no learned caution during specific market regimes
-- Fix: compute mood-outcome stats, pass as context ("bearish-day picks: 35% win rate")
+**Positioning (all tiers):** Stock Peak is an **AI research/signal service**, never a registered investment adviser. Every output carries the Bengali disclaimer "শিক্ষামূলক AI বিশ্লেষণ, বিনিয়োগ পরামর্শ নয়" (educational AI analysis, not investment advice). Same regulatory category as StockLens BD, Bloomberg, Morningstar — none BSEC-registered. AI agents cannot be BSEC-registered by law. M1 specifically: "AI picks + portfolio tracker" — matches StockLens BD's price tier but beats on portfolio-integrated P&L and stock-search timeline. Each subsequent tier adds capability depth within the research-service framing, never advisory claims.
 
 ---
 
-## Autonomous Feedback Loop — Approved Design (P0)
+## Domain research (read once, internalize)
 
-The system runs fully autonomous end-to-end. The ONLY human gate is approving
-skill/prompt updates. Everything else runs on schedule without intervention.
-
-### System overview
-
-```
-AUTONOMOUS (daily, no human):
-  broker_agent.py
-    → prepare_candidates.py
-      → generate_picks_llm.py (or Claude Code skill)
-        → store_picks.py → DB + Telegram + email
-          → outcome_tracker.py (resolves open picks)
-            → failure_analysis.py (writes daily Markdown log)
-              → feedback_compiler.py [NEW] (aggregates structured stats)
-                → skill_proposal_engine.py [NEW] (drafts prompt change proposal)
-                  → writes to `skill_proposals` table
-
-HUMAN-GATED (admin reviews when ready):
-  Admin dashboard (Next.js page)
-    → sees pending proposals with side-by-side diff
-    → reads evidence (structured stats, never raw data)
-    → sees sample size warning if < 30 picks
-    → approve → skill file updated + git committed
-    → reject  → logged with reason, discarded
-    → defer   → stays in queue
-```
-
-### New component: `feedback_compiler.py`
-
-Runs after failure_analysis.py in the EOD job. Reads from `pick_outcomes` +
-`dse_daily_snapshots` + `picks`. Outputs ONLY structured stats to a
-`feedback_reports` table — never raw market data, never scraped text.
-
-Output shape:
-```json
-{
-  "period": "last_30_picks",
-  "win_rate": 0.58,
-  "avg_gain": 4.2,
-  "confidence_calibration": {"8-10": 0.55, "5-7": 0.62, "1-4": 0.40},
-  "indicator_patterns": [
-    {"condition": "RSI > 70 at pick time", "sample": 12, "win_rate": 0.25},
-    {"condition": "bearish mood + pick anyway", "sample": 8, "win_rate": 0.35}
-  ],
-  "repeat_ticker_performance": {"MONOSPOOL": {"picks": 3, "wins": 2}},
-  "worst_pattern": "RSI > 70 at pick time → 75% stop hit"
-}
-```
-
-Closes Gaps 1-5 and 8 from the context gaps section above.
-
-### New component: `skill_proposal_engine.py`
-
-Runs after feedback_compiler.py. Reads the structured stats. Makes ONE Claude
-API call to draft a specific, scoped prompt change. Writes a row to
-`skill_proposals` table. NEVER writes to skill files directly.
-
-### New DB table: `skill_proposals`
-
-```sql
-CREATE TABLE skill_proposals (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  skill_name text NOT NULL,
-  proposal_type text NOT NULL,  -- prompt_adjustment, threshold_change, new_rule
-  evidence_summary text NOT NULL,
-  current_text text NOT NULL,
-  proposed_text text NOT NULL,
-  reasoning text NOT NULL,
-  sample_size int NOT NULL,
-  status text NOT NULL DEFAULT 'pending',
-  reviewed_by uuid REFERENCES users(id),
-  reviewed_at timestamptz,
-  review_note text,
-  created_at timestamptz DEFAULT now()
-);
-```
-
-### New: admin review page (Next.js)
-
-- Route: `/admin/skill-proposals`
-- Shows pending proposals sorted by created_at desc
-- Each proposal card: skill name, proposal type, sample size, reasoning
-- Expand to see side-by-side diff (current_text vs proposed_text)
-- Sample size warning badge if < 30 picks
-- Action buttons: Approve / Reject (with note) / Defer
-- On approve: API route writes the skill file on the llm-pipeline branch,
-  commits to git with message "skill: apply proposal {id} — {reasoning}"
-- History tab: past approved/rejected proposals for audit trail
-
-### Safety rails (non-negotiable)
-
-1. **Sanitization boundary**: feedback_compiler outputs structured stats only.
-   No raw scraped data, no stock names from DSE feed, no user-generated text
-   ever reaches the proposal. Blocks prompt injection via market data.
-2. **Write separation**: skill_proposal_engine can NEVER write to skill files.
-   Only writes to the proposals table. Admin approval triggers the actual file write.
-3. **Sample size floor**: no proposal generated if fewer than 30 resolved picks
-   in the analysis window. Prevents noise-driven changes.
-4. **Git versioning**: every approved change is a git commit. Full rollback history.
-   If win rate drops after a change, revert the commit.
-5. **One proposal per skill per week**: rate-limited. The system can't spam 10
-   changes in one day based on the same data.
-
-### Implementation order
-
-- [ ] `feedback_compiler.py` — aggregate stats from picks + outcomes + snapshots
-- [ ] `feedback_reports` DB table — store compiled stats per run
-- [ ] Wire feedback_compiler into notification_engine.py EOD job (after failure_analysis)
-- [ ] `skill_proposal_engine.py` — draft proposals from feedback stats
-- [ ] `skill_proposals` DB table
-- [ ] Wire skill_proposal_engine into EOD job (after feedback_compiler)
-- [ ] Admin review page at `/admin/skill-proposals` (Next.js)
-- [ ] API route: POST `/api/admin/skill-proposals/:id/approve` — writes skill file + git commit
-- [ ] API route: POST `/api/admin/skill-proposals/:id/reject` — logs rejection
-- [ ] Inject feedback_compiler stats into generate_picks_llm.py prompt (closes Gaps 1-5, 8)
-- [ ] Surface all 3 risk tiers in prompt (closes Gap 6)
-- [ ] Portfolio-aware picks for personalized recommendations (closes Gap 7)
+- `docs/expert-analysis-methodology.md` (258 lines) — technical analysis, risk management, DSE specifics, positive-expectancy framing
+- `docs/professional_broker_research.md` (412 lines) — client profiling, notification schedule, workflow phases, DSE rules
+- `docs/Expert Stock Broker Strategies and Client Management.md` (227 lines) — temporal infrastructure, fiduciary, crisis communication
 
 ---
 
-## Data Quality (P0)
+## Completed (baseline for M1)
 
-- [ ] Run POC during live DSE market hours (10:00-14:30 BDT) to verify bdshare returns real-time vs cached data
-- [ ] Add data timestamp verification — check if scraped data matches today's trading session
-- [ ] Validate bdshare data against DSE official website (dse.com.bd) for at least 10 stocks
-- [ ] Historical backtest: compare our screen output against past StockLens BD picks (need to subscribe and collect their picks for 2 weeks)
-- [ ] DSEX index comparison — track whether our picks beat the broad index over time
-- [ ] Add sanity checks in pipeline: reject data if 0 declining stocks, if all changes are positive, or if data looks stale
-- [ ] Test alternative data sources: direct DSE scraping, stockbangladesh.com, amarstock.com
+### Core platform
+- [x] Next.js 14 + App Router, standalone Docker build, Bengali-first UI
+- [x] Design system (Fraunces + Plus Jakarta Sans + Noto Sans Bengali + Geist Mono)
+- [x] All core pages: landing, signup, login, dashboard, portfolio CRUD, track-record, about, privacy, disclaimer, forgot-password
 
-## Prediction Quality (P0)
+### Authentication & security (hardened 2026-04-14)
+- [x] Email/password + Google OAuth scaffolding
+- [x] bcrypt cost 12, email format + password complexity validation
+- [x] Rate limiting on login/signup (10/15min per IP)
+- [x] Auth required on `/api/picks` and `/api/scorecard`
+- [x] Security headers (X-Frame-Options, HSTS, Referrer-Policy, etc.)
+- [x] Date parameter validation on admin routes
 
-- [x] Dark launch: Day 1 complete (3 picks stored, idempotency verified)
-- [ ] Dark launch: run during live trading hours Days 2-3
-- [ ] Cross-verify each day's picks against community sentiment (Facebook groups, Telegram channels, DSE forums)
-- [ ] Compare against StockLens BD picks daily (both use AI, see who performs better)
-- [ ] Add sector analysis to screening (banking, pharma, textile, etc. — weight sectors by recent momentum)
-- [ ] Historical RSI/SMA data: bdshare historical endpoint times out from local machine. Try from VM or use alternative source.
-- [ ] Confidence score calibration: track whether 8/10 picks actually hit target more than 6/10 picks
+### Picks pipeline (built, not yet run end-to-end)
+- [x] 3-stage isolated pipeline: `broker_agent.py` → `prepare_candidates.py` → `generate_picks_openrouter.py` → `store_picks.py`
+- [x] Technical indicators (RSI/MACD/ATR/Bollinger/volume) for all DSE actively-traded stocks
+- [x] 3 risk tiers computed per stock (conservative/moderate/aggressive)
+- [x] Multi-agent bull/bear debate (`multi_agent.py`, opt-in via `MULTI_AGENT=1`)
+- [x] Risk profiling questionnaire with 30-day reassessment lock
+- [x] OpenRouter backend + admin API routes for all pipeline stages
 
-## Auth & User Features (P1)
+### Notifications (in-app, replacing Telegram channel)
+- [x] `notifications` DB table + fan-out per user
+- [x] `/api/notifications` GET/PATCH/read-all (auth-gated)
+- [x] `/notifications` full-list page + dashboard NotificationBell (30s polling + browser Notification API)
+- [x] 7 notification types: daily_picks, pre_market_brief, intraday_opportunity, exceptional_opportunity, stop_loss_hit, target_hit, eod_summary, weekly_digest
+- [x] Intraday monitor (stops/targets/±5%) + intraday opportunity scan (volume spike ≥2×)
 
-- [x] Risk profiling questionnaire with Bengali/English bilingual UI
-- [x] Risk profile badge in dashboard nav
-- [ ] Forgot password flow (email-based token reset)
-- [ ] Email verification on signup
-- [ ] Google OAuth (needs Google Cloud project credentials)
-- [ ] Logout button in dashboard/portfolio nav
-- [ ] User profile page (edit name, phone, manage subscription)
+### Feedback loop (mechanism built, UI not)
+- [x] outcome_tracker → failure_analysis → feedback_compiler → skill_proposal_engine
+- [x] `skill_proposals` DB table with safety rails (write separation, sample-size floor, rate-limited)
 
-## Missing Features vs StockLens BD (P1)
+### Portfolio intelligence (partial, no UI yet)
+- [x] `portfolio_intelligence.py` — VaR (95%, 252-day), correlation matrix, drawdown vs peak
+- [x] `portfolio_snapshots` cache table
 
-- [ ] AI stock search (free instant analysis on homepage — key conversion funnel)
-- [ ] Dark mode (StockLens BD defaults to dark theme)
-- [ ] Technical analysis dashboard with charts
-- [ ] Live chat support widget
-- [ ] Facebook Pixel / analytics tracking
+### Docker + infrastructure
+- [x] Single-container deployment (PostgreSQL + Next.js + notifier via supervisord)
+- [x] Persistent volumes (pgdata, logs)
+- [x] Entrypoint wiring (LLM keys, NEXTAUTH_SECRET auto-gen, backend selection)
 
-## Payment (P1)
+---
 
-- [ ] SSLCommerz integration (apply for merchant account)
-- [ ] bKash merchant API (4-8 week approval, apply NOW)
-- [ ] Gate Pro features behind subscription after trial expires
-- [ ] Trial expiry email notifications (Day 5, Day 7, Day 8, Day 14)
+## M1 — Entry tier (৳260/month) — ship target: 3-5 weeks
 
-## Delivery Channels (P2)
+**Product scope:** 3 daily picks + portfolio CRUD + programmatic P&L + stock search/timeline + payment + paywall + onboarding.
 
-- [ ] Telegram bot (@StockPeakBD) — /today, /history, /subscribe commands
-- [ ] Email delivery via Resend — daily picks + weekly report templates
-- [ ] WhatsApp Business API (apply, implement after Telegram works)
+**Positioning:** "AI picks + portfolio tracker." Research-service framing, not consultant, not adviser. Disclaimer on every pick. Same legal category as StockLens BD — no BSEC registration pursued or needed.
 
-## Infrastructure (P2)
+### Blockers (must ship before launch)
 
-- [x] Removed GitHub Actions daily-picks workflow (pipeline moved to llm-pipeline branch)
-- [ ] Fix GitHub Actions deploy — env vars must come from /root/.stockpeak.env on VM, not from GitHub secrets (partially fixed)
-- [ ] Add health check endpoint (/api/health) for monitoring
-- [ ] Set up error logging (Sentry or similar)
-- [ ] Timezone handling: server runs UTC, picks should use BDT (UTC+6). Standardize.
-- [ ] Container timezone: set TZ=Asia/Dhaka in Dockerfile
-- [ ] Get real CLAUDE_API_KEY from console.anthropic.com (OAuth token works on haiku only, rate-limited)
-- [ ] Paperclip integration: replace generate_picks_llm.py with Claude Code agent (Stage 2)
+**Pipeline correctness:**
+- [ ] #1 Run pipeline end-to-end once quota resets (unblocks everything)
+- [ ] #32 Wrap `store_picks` insertion loop in DB transaction
+- [ ] #34 Schema migration tracking in entrypoint (replaces marker-file deploy bomb)
+- [ ] #7 Pydantic models for all LLM output envelopes
 
-## Future (P3)
+**Infrastructure cleanup:**
+- [ ] #2 Remove Claude Code CLI from Dockerfile (saves 200MB, wrong tool)
+- [ ] #3 Rotate exposed OpenRouter API key
+- [ ] #4 Bake notification system into Docker image (currently live-patched)
+- [ ] #12 Switch production LLM off free tier (direct Anthropic ~$5-10/mo, or paid OpenRouter 1000 req/day)
 
-- [ ] Custom ML models (XGBoost/LightGBM) to replace/augment LLM picks
-- [ ] Portfolio P&L tracking with live prices
-- [ ] Stock screener
-- [ ] Weekly market report (automated Saturday email)
-- [ ] Exit alerts (intraday price monitoring)
-- [ ] PWA with push notifications
-- [ ] BSEC Investment Adviser registration
-- [ ] Claude Code skills for broker workflows (/broker-picks, /broker-eod, /broker-day)
+**M1 features:**
+- [ ] **#35 Stock search + historical price timeline** (case-insensitive fuzzy search, OHLCV chart, backfill script)
+- [ ] **#36 Portfolio P&L calculation + display** (programmatic, no AI)
+- [ ] **#37 Personal bKash + Nagad payment with SMS verification** (no merchant approval, ~2-3 days)
+- [ ] **#38 Paywall + trial expiry gating** (7-day trial → ৳260/mo subscription, JWT session_version refresh)
+- [ ] **#39 Onboarding flow** (Day 0 → first pick retention mechanics, sample data during no-pick-yet window)
+
+**Quality gates:**
+- [ ] #33 Write critical test suite (~35 Tier-1 tests, blocks launch; ~27 Tier-2 post-launch)
+- [ ] #31 Basic pipeline observability dashboard (need to see failures in <60s when first user complains)
+- [ ] #41 Customer support tooling (FAQ + macros + shared support email, 50-user hard cap until scaled)
+
+**Post-M1 (moved out per eng-review scope tightening 2026-04-15):**
+- [ ] #11 Notification bell on all pages (dashboard-only works for M1)
+- [ ] #13 Admin audit logging (no admin team yet)
+
+**Parallel long-lead items (start this week):**
+- [ ] Dedicated merchant phone setup for SMS verification (bKash + Nagad personal SIMs, SMS forwarder app configured to webhook). See memory/payment_architecture.md
+- [ ] Capture real bKash + Nagad SMS samples (send yourself ৳10 from another account, screenshot the SMS) — needed to validate regex parser in #37
+- [ ] One-time Bangladesh securities lawyer review of TOS + disclaimer language (single legal review, not registration; do before public signup opens)
+- [ ] Pricing willingness-to-pay validation via 5 real user conversations (task #42)
+
+**Dark launch requirement:** 2 weeks of successful pipeline runs before opening public signup so the track-record scorecard has substance for onboarding.
+
+### M1 shipping order
+
+```
+Week 1 (2026-04-15 to 2026-04-21): FIX + FIRST RUN
+  Mon-Tue: Set up merchant SMS verification phone (bKash + Nagad personal SIMs).
+           Capture real bKash + Nagad SMS samples for regex tests (send yourself ৳10).
+           Start #42 willingness-to-pay calls with 5 real users.
+  Sun (2026-04-19): #1 pipeline first run (DRY_RUN=1) — DARK LAUNCH COUNTER STARTS
+  Throughout: #32 TXN wrap + god-function split, #34 migrations, #2/#3/#4 cleanup,
+              #12 switch to paid LLM tier (free 50/day cannot sustain dev + daily pipeline)
+
+Week 2: M1 FEATURES (dark launch day 3-7)
+  #35 stock search + timeline
+  #36 portfolio P&L
+  #7 Pydantic envelopes
+  #37 bKash/Nagad SMS-verified payment flow
+
+Week 3: QUALITY + COMMERCIAL (dark launch day 8-12)
+  #33 Tier-1 tests (~35)
+  #38 paywall middleware (JWT session_version pattern)
+  #39 onboarding flow + sample-data screens
+  #31 pipeline observability dashboard
+  #41 customer support FAQ + macros
+
+Week 4: BETA (dark launch day 13-17)
+  Pre-launch gate verification (≥70% of last 20 picks within 1×ATR within 5 trading days)
+  Lawyer review of TOS + disclaimer
+  Friendly beta: 3 users sign up → send bKash → receive pick → mark read
+
+Week 5: BUFFER for first-run bugs (dark launch day 18-22)
+  Clean-run streak verification (14 consecutive trading days incident-free)
+  If streak broken earlier: M1 launch slips into Week 6+
+
+Week 6-7: PUBLIC LAUNCH
+  Signup opens at ৳260/mo
+  Hard cap at 50 users until support tooling + pipeline stability proven
+```
+
+**Timeline honesty:** Eng-review outside voice flagged 14 consecutive clean trading days likely pushes public launch to week 6-7, not 5. Week 5 is buffer for first-run debug iterations. No merchant approval wait anymore (personal bKash + Nagad ships in week 2), so timeline risk is pipeline stability + 14-day gate, not payment provider.
+
+---
+
+## M2 — Premium: Risk-tiered signals
+
+**Product scope:** Same stock presented as BUY/HOLD/SELL per user's risk tier via per-user Risk Manager pipeline stage.
+
+**Unlock trigger:** M1 shipped + first 20 paying users converted.
+
+- [ ] #24 Risk Manager per-user pipeline stage (includes `pick_deliveries` table + feature flag + suitability evidence JSONB)
+
+---
+
+## M3 — Pro: Portfolio intelligence
+
+**Product scope:** VaR display, correlation warnings, drawdown escalation notifications, DSEX-level market alerts.
+
+**Unlock trigger:** M2 converts + demand signal for portfolio-risk features.
+
+- [ ] #27 Portfolio drawdown tier escalation (-5/-10/-15/-20/-30% protocols)
+- [ ] #30 DSEX index-level monitoring + market-wide alerts
+- [ ] VaR + correlation surfaced in UI (portfolio_intelligence.py backend exists, needs frontend)
+
+---
+
+## M4 — Analyst: Deep analysis
+
+**Product scope:** Multi-specialist agents exposed in pick analysis, fundamental data per pick, macro context per pick.
+
+**Unlock trigger:** M3 converts + demand for "why did the AI pick this?"
+
+- [ ] #6 Replace prompt-template LLM call with Claude Agent SDK + tool use
+- [ ] #10 Expand specialist agent roles beyond bull/bear (fundamental, sentiment, macro, risk manager agents)
+- [ ] #25 Wire fundamental data source — P/E, ROE, D/E, EPS growth for DSE stocks
+- [ ] #26 Add macro data feeds — BSEC announcements, remittance, BDT rate, FII/FPI
+- [ ] #8 Study TradingAgents reference project (arxiv.org/abs/2412.20138) before implementing
+
+---
+
+## M5 — Elite: Evolving system (the moat)
+
+**Product scope:** Skill library with decomposed prompts, per-skill attribution, skill lifecycle management, admin proposal review UI, autonomous feedback loop closes weekly.
+
+**Unlock trigger:** M4 converts + sufficient resolved-pick volume (~300+) for per-skill statistical significance.
+
+- [ ] #15 Design skill decomposition — break monolithic prompt into named skill units
+- [ ] #16 Build skill registry (filesystem YAML + DB sync)
+- [ ] #17 Per-skill outcome attribution (the key unlock — makes the system learnable)
+- [ ] #19 Context-aware skill retrieval
+- [ ] #18 Skill lifecycle management (draft → shadow → active → deprecated)
+- [ ] #20 DSE-specific skill pack (Z-category, circuit breakers, remittance months, Eid, BDT sensitivity)
+- [ ] #22 Regime detection + per-regime skill variants
+- [ ] #23 Upgrade skill_proposal_engine to target individual skills (not monolith)
+- [ ] #5 Close broker context gaps (feed outcomes back into prompts)
+- [ ] #14 Admin UI for skill proposal review (closes feedback loop)
+- [ ] #9 Migrate orchestration from bash subprocess to LangGraph
+
+---
+
+## M6 — Expert+: Deeper features, same research-service framing
+
+**Product scope:** Monthly/quarterly/annual performance reports with per-skill attribution. Client-relationship layer (drawdown reassurance, FOMO guardrails, education nudges). Generic pick-delivery ops log for support. ALL outputs still carry "AI research, not advice" disclaimer — no advisory positioning, no suitability language in copy.
+
+**Unlock trigger:** M5 converts + demand for deeper features. No external regulatory gate.
+
+- [ ] #29 Generic pick-delivery log (reframed from suitability audit — ops support, not compliance)
+- [ ] #28 Monthly/quarterly/annual report generators
+- [ ] #21 Client-relationship skills (drawdown reassurance, FOMO guardrails, target-hit follow-up, education nudges — all framed as "AI context," not "adviser guidance")
+
+---
+
+## Milestone → task map (complete)
+
+| Task | Title | Milestone |
+|---|---|---|
+| #1 | Run picks pipeline end-to-end | M1 |
+| #2 | Remove Claude Code CLI from Dockerfile | M1 |
+| #3 | Rotate exposed OpenRouter API key | M1 |
+| #4 | Bake notification system into Docker image | M1 |
+| #7 | Pydantic envelopes | M1 |
+| #11 | Notification bell on all pages | M1 |
+| #12 | Switch production LLM off free tier | M1 |
+| #13 | Admin audit logging | M1 |
+| #31 | Observability dashboard | M1 |
+| #32 | Transaction wrap store_picks | M1 |
+| #33 | Critical test suite | M1 |
+| #34 | Schema migration tracking | M1 |
+| #35 | **Stock search + timeline** | **M1** |
+| #36 | **Portfolio P&L** | **M1** |
+| #37 | **Payment integration** | **M1 (long-lead)** |
+| #38 | **Paywall + trial gating** | **M1** |
+| #39 | **Onboarding flow** | **M1** |
+| #24 | Risk Manager per-user | M2 |
+| #27 | Drawdown tier escalation | M3 |
+| #30 | DSEX index monitoring | M3 |
+| #6 | Claude Agent SDK + tool use | M4 |
+| #8 | Study TradingAgents | M4 |
+| #10 | Specialist agents | M4 |
+| #25 | Fundamental data | M4 |
+| #26 | Macro feeds | M4 |
+| #5 | Feedback into prompts | M5 |
+| #9 | LangGraph orchestration | M5 |
+| #14 | Admin review UI | M5 |
+| #15 | Skill decomposition | M5 |
+| #16 | Skill registry | M5 |
+| #17 | Per-skill attribution (the moat) | M5 |
+| #18 | Skill lifecycle | M5 |
+| #19 | Skill retrieval | M5 |
+| #20 | DSE skill pack | M5 |
+| #22 | Regime detection | M5 |
+| #23 | Proposal engine upgrade | M5 |
+| #21 | Client-relationship skills | M6 |
+| #28 | Periodic reports | M6 |
+| #29 | Generic pick-delivery log (reframed) | M6 |
+
+**M1: 17 tasks. M2: 1. M3: 2. M4: 5. M5: 11. M6: 3. Total: 39 (3 new added today + 1 net new + existing 34 - 0 deleted = 39).**
+
+---
+
+## Operational state (as of 2026-04-15)
+
+- **Container:** stockpeak running; postgres + nextjs + notifier all healthy
+- **Picks in DB:** 0 (pipeline never run)
+- **Branch:** `claude-code-pipeline` (4373+ / 657− vs main, 10+ uncommitted files)
+- **Today:** DSE closed (Bengali New Year day 2, Pohela Boishakh). Tomorrow also closed. First run opportunity: Sunday 2026-04-19.
+- **OpenRouter quota:** expected to reset at midnight UTC
+
+---
+
+## Outside voice note (2026-04-14 CEO review)
+
+An independent review flagged 10 gaps. Milestone reframing resolved 8 of them; 2 remain open for operator attention:
+
+- Dark launch requires 2 weeks of picks before public launch — must plan calendar around this
+- ~~BSEC IA registration is a 6-12 month sequence~~ **Corrected 2026-04-15:** Stock Peak operates as AI research service; no BSEC IA registration pursued. See memory/regulatory_positioning.md. Single pre-launch lawyer review of TOS + disclaimer is the only legal spend.
+
+## Key decisions from CEO review (2026-04-15)
+
+1. **Ship model: tiered milestones, not single-product launch.** M1 ships entry tier; each higher tier unlocks on revenue validation.
+2. **All-tier positioning:** AI research/signal service with disclaimer, never registered investment adviser. AI agents cannot be BSEC-registered by law. Same legal category as StockLens BD, Bloomberg.
+3. **#24 Risk Manager scope decisions baked in:** `pick_deliveries` table + `per_user_pm_enabled` feature flag + transactional write of recommendations_log + suitability_evidence JSONB + per-user try/except isolation.
+4. **#29 reframed entirely** — "suitability audit log" was imported US framing. Rewritten as generic pick-delivery ops log (no "suitability" vocabulary) because Stock Peak never claims adviser status. Ops-support purpose, not compliance.
+5. **Test suite (#33) and transaction wrapping (#32) are M1 blockers** — ship before any paying user.
+6. **Schema migrations (#34) must replace marker-file logic** — current entrypoint silently skips future schema changes on redeploy.
