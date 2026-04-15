@@ -69,9 +69,27 @@ def main():
     today = datetime.now().strftime("%Y-%m-%d")
     cand_path = f"{TMP_DIR}/stockpeak-candidates-{today}.json"
     picks_path = f"{TMP_DIR}/stockpeak-picks-{today}.json"
+    broker_report = f"{TMP_DIR}/stockpeak-broker-report.json"
+
+    # Stage 0: scrape + score DSE (broker_agent) if report is missing or >6h stale
+    report_age_hr = 999
+    if os.path.exists(broker_report):
+        import time
+        report_age_hr = (time.time() - os.path.getmtime(broker_report)) / 3600
+    if report_age_hr > 6:
+        logger.info("[0/4] broker_agent.py (report %s)",
+                    "missing" if report_age_hr > 900 else f"{report_age_hr:.1f}h stale")
+        rc = run_stage("broker_agent", [
+            sys.executable, f"{SCRIPTS_DIR}/broker_agent.py"
+        ])
+        if rc != 0:
+            logger.error("broker_agent failed — cannot proceed without fresh DSE data")
+            sys.exit(rc)
+    else:
+        logger.info("[0/4] broker report fresh (%.1fh old) — skipping re-scrape", report_age_hr)
 
     # Stage 1: prepare candidates (no LLM)
-    logger.info("[1/3] prepare_candidates.py")
+    logger.info("[1/4] prepare_candidates.py")
     rc = run_stage("prepare", [
         sys.executable, f"{SCRIPTS_DIR}/prepare_candidates.py", "--out", cand_path
     ])
@@ -80,7 +98,7 @@ def main():
 
     # Stage 2: LLM pick generation — backend selected by PICKS_BACKEND env var
     stage2_script = _STAGE2_SCRIPTS.get(PICKS_BACKEND, _STAGE2_SCRIPTS["claude-code"])
-    logger.info("[2/3] %s  (PICKS_BACKEND=%s)", stage2_script, PICKS_BACKEND)
+    logger.info("[2/4] %s  (PICKS_BACKEND=%s)", stage2_script, PICKS_BACKEND)
     rc = run_stage("generate", [
         sys.executable, f"{SCRIPTS_DIR}/{stage2_script}", "--in", cand_path, "--out", picks_path
     ])
@@ -88,7 +106,7 @@ def main():
         sys.exit(rc)
 
     # Stage 3: validate, store, deliver (no LLM)
-    logger.info("[3/3] store_picks.py")
+    logger.info("[3/4] store_picks.py")
     rc = run_stage("store", [
         sys.executable, f"{SCRIPTS_DIR}/store_picks.py", "--in", picks_path
     ])

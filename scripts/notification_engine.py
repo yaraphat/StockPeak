@@ -75,8 +75,7 @@ DSE_HOLIDAYS_2026 = {
     "2026-02-21",  # Ekushey February / International Mother Language Day
     "2026-03-17",  # Birth of Sheikh Mujibur Rahman (observed)
     "2026-03-26",  # Independence Day
-    "2026-04-14",  # Bengali New Year (Pohela Boishakh)
-    "2026-04-15",  # Bengali New Year holiday
+    "2026-04-14",  # Bengali New Year (Pohela Boishakh) — single-day holiday
     "2026-05-01",  # May Day / Labour Day
     "2026-06-07",  # Eid ul-Adha (approx — confirm with BSEC)
     "2026-06-08",  # Eid ul-Adha holiday
