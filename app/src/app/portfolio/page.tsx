@@ -2,216 +2,397 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { AppHeader } from "@/components/app-header";
+import { PnLCard } from "@/components/pnl-card";
+import { StockSearch } from "@/components/stock-search";
 
 interface Holding {
   id: string;
   ticker: string;
-  company_name: string;
-  buy_price: number;
+  company_name: string | null;
+  company_name_bn: string | null;
+  category: string | null;
   quantity: number;
-  buy_date: string;
-  notes: string | null;
+  buy_price: number;
+  invested: number;
+  current_price: number | null;
+  current_value: number | null;
+  price_date: string | null;
+  day_change_pct: number | null;
+  pnl: number | null;
+  pnl_pct: number | null;
+  is_stale: boolean;
+}
+
+interface PnLData {
+  holdings: Holding[];
+  summary: {
+    total_holdings: number;
+    total_invested: number;
+    total_value: number;
+    total_pnl: number;
+    total_pnl_pct: number;
+    as_of: string | null;
+  };
+  insights: string[];
+}
+
+interface StockAutocomplete {
+  ticker: string;
+  company_name: string;
+  company_name_bn: string | null;
+  category: string | null;
 }
 
 export default function PortfolioPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [data, setData] = useState<PnLData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({
-    ticker: "",
-    company_name: "",
-    buy_price: "",
-    quantity: "",
-    buy_date: new Date().toISOString().split("T")[0],
-    notes: "",
-  });
-  const [formError, setFormError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const access = (session?.user as Record<string, unknown> | undefined)?.accessStatus as string | undefined;
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/portfolio/pnl");
+      if (res.ok) {
+        const d = await res.json();
+        setData(d);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (status === "unauthenticated") router.push("/login");
-    if (status === "authenticated") fetchHoldings();
-  }, [status, router]);
-
-  async function fetchHoldings() {
-    setLoading(true);
-    const res = await fetch("/api/portfolio");
-    if (res.ok) {
-      const data = await res.json();
-      setHoldings(data.holdings);
-    }
-    setLoading(false);
-  }
-
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError("");
-    setSubmitting(true);
-
-    const res = await fetch("/api/portfolio", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...formData,
-        buy_price: parseFloat(formData.buy_price),
-        quantity: parseInt(formData.quantity),
-      }),
-    });
-
-    setSubmitting(false);
-
-    if (!res.ok) {
-      const data = await res.json();
-      setFormError(data.error || "Failed to add holding");
-      return;
-    }
-
-    setFormData({ ticker: "", company_name: "", buy_price: "", quantity: "", buy_date: new Date().toISOString().split("T")[0], notes: "" });
-    setShowForm(false);
-    fetchHoldings();
-  }
+    if (status === "unauthenticated") router.push("/login?callbackUrl=/portfolio");
+    if (status === "authenticated") fetchData();
+  }, [status, router, fetchData]);
 
   async function handleDelete(id: string) {
+    if (!confirm("Remove this holding?")) return;
     await fetch(`/api/portfolio?id=${id}`, { method: "DELETE" });
-    fetchHoldings();
+    fetchData();
   }
 
   if (status === "loading" || loading) {
     return (
       <div className="min-h-screen bg-[var(--background)] flex items-center justify-center">
-        <p className="text-[var(--color-muted)]">Loading...</p>
+        <div className="text-sm text-[var(--color-muted)]">Loading portfolio...</div>
       </div>
     );
   }
 
-  const totalInvested = holdings.reduce((sum, h) => sum + h.buy_price * h.quantity, 0);
-  const totalShares = holdings.reduce((sum, h) => sum + h.quantity, 0);
+  if (!session?.user) return null;
+
+  const u = session.user as Record<string, unknown>;
 
   return (
     <div className="min-h-screen bg-[var(--background)]">
-      <nav className="border-b border-[var(--color-border)] bg-[var(--color-surface)]">
-        <div className="max-w-3xl mx-auto px-6 py-4 flex justify-between items-center">
-          <Link href="/" className="font-display font-semibold text-lg">Stock Peak</Link>
-          <div className="flex items-center gap-4 text-sm">
-            <Link href="/dashboard" className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors">Picks</Link>
-            <Link href="/portfolio" className="text-[var(--color-primary)] font-medium">Portfolio</Link>
-            <Link href="/track-record" className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors">Track Record</Link>
-          </div>
-        </div>
-      </nav>
+      <AppHeader
+        userName={u.name as string | null}
+        userEmail={u.email as string | null}
+        accessStatus={access as "subscribed" | "trial" | "grace" | "expired" | undefined ?? null}
+      />
 
-      <main className="max-w-3xl mx-auto px-6 py-8">
-        <div className="flex justify-between items-center mb-6">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="font-display text-2xl font-bold">Portfolio</h1>
-            <p className="font-bengali text-sm text-[var(--color-muted)]">আপনার স্টক পোর্টফোলিও ট্র্যাক করুন</p>
+            <h1 className="font-display text-2xl sm:text-3xl font-semibold">Portfolio</h1>
+            <p className="text-sm text-[var(--color-muted)] mt-0.5">
+              Your DSE holdings, tracked automatically
+            </p>
           </div>
           <button
-            onClick={() => setShowForm(!showForm)}
-            className="bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold px-4 py-2 rounded-lg transition-opacity text-sm"
+            onClick={() => setShowForm(true)}
+            className="inline-flex items-center gap-2 bg-[var(--color-primary)] text-white font-medium text-sm px-4 py-2 rounded-lg hover:bg-[var(--color-primary-hover)] transition-colors"
           >
-            {showForm ? "Cancel" : "+ Add Stock"}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+            Add holding
           </button>
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-4 text-center">
-            <div className="font-mono text-xl font-medium tabular-nums">{holdings.length}</div>
-            <div className="text-xs text-[var(--color-muted)] uppercase tracking-wider">Holdings</div>
-          </div>
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-4 text-center">
-            <div className="font-mono text-xl font-medium tabular-nums">{totalShares.toLocaleString()}</div>
-            <div className="text-xs text-[var(--color-muted)] uppercase tracking-wider">Total Shares</div>
-          </div>
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-4 text-center">
-            <div className="font-mono text-xl font-medium tabular-nums">৳{totalInvested.toLocaleString()}</div>
-            <div className="text-xs text-[var(--color-muted)] uppercase tracking-wider">Invested</div>
-          </div>
-        </div>
+        {data && <PnLCard pnl={data.summary} insights={data.insights} />}
 
-        {/* Add Stock Form */}
-        {showForm && (
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-6 mb-6">
-            <h2 className="font-semibold mb-4">Add Stock to Portfolio</h2>
-            {formError && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{formError}</div>
-            )}
-            <form onSubmit={handleAdd} className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium mb-1 text-[var(--color-muted)]">Ticker Symbol</label>
-                <input type="text" value={formData.ticker} onChange={(e) => setFormData({ ...formData, ticker: e.target.value })} placeholder="e.g. GP" className="w-full px-3 py-2 border border-[var(--color-border)] rounded-lg bg-[var(--color-surface)] text-sm font-mono uppercase focus:outline-none focus:border-[var(--color-primary)] transition" required disabled={submitting} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1 text-[var(--color-muted)]">Company Name</label>
-                <input type="text" value={formData.company_name} onChange={(e) => setFormData({ ...formData, company_name: e.target.value })} placeholder="Grameenphone Ltd." className="w-full px-3 py-2 border border-[var(--color-border)] rounded-lg bg-[var(--color-surface)] text-sm focus:outline-none focus:border-[var(--color-primary)] transition" disabled={submitting} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1 text-[var(--color-muted)]">Buy Price (৳)</label>
-                <input type="number" step="0.01" value={formData.buy_price} onChange={(e) => setFormData({ ...formData, buy_price: e.target.value })} placeholder="450.00" className="w-full px-3 py-2 border border-[var(--color-border)] rounded-lg bg-[var(--color-surface)] text-sm font-mono focus:outline-none focus:border-[var(--color-primary)] transition" required disabled={submitting} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1 text-[var(--color-muted)]">Quantity</label>
-                <input type="number" min="1" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} placeholder="100" className="w-full px-3 py-2 border border-[var(--color-border)] rounded-lg bg-[var(--color-surface)] text-sm font-mono focus:outline-none focus:border-[var(--color-primary)] transition" required disabled={submitting} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1 text-[var(--color-muted)]">Buy Date</label>
-                <input type="date" value={formData.buy_date} onChange={(e) => setFormData({ ...formData, buy_date: e.target.value })} className="w-full px-3 py-2 border border-[var(--color-border)] rounded-lg bg-[var(--color-surface)] text-sm focus:outline-none focus:border-[var(--color-primary)] transition" disabled={submitting} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1 text-[var(--color-muted)]">Notes</label>
-                <input type="text" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Optional" className="w-full px-3 py-2 border border-[var(--color-border)] rounded-lg bg-[var(--color-surface)] text-sm focus:outline-none focus:border-[var(--color-primary)] transition" disabled={submitting} />
-              </div>
-              <div className="col-span-2">
-                <button type="submit" disabled={submitting} className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-2.5 rounded-lg transition-opacity text-sm disabled:opacity-50">
-                  {submitting ? "Adding..." : "Add to Portfolio"}
-                </button>
-              </div>
-            </form>
+        {/* Holdings table */}
+        {data && data.holdings.length > 0 && (
+          <div className="bg-white border border-[var(--color-border)] rounded-xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-[var(--color-border-subtle)] flex items-center justify-between">
+              <h2 className="font-display text-sm font-semibold">Holdings</h2>
+              <span className="text-xs text-[var(--color-muted)]">{data.holdings.length} stock{data.holdings.length === 1 ? "" : "s"}</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--color-border-subtle)] text-[10px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+                    <th className="px-5 py-3 text-left">Stock</th>
+                    <th className="px-3 py-3 text-right">Qty</th>
+                    <th className="px-3 py-3 text-right">Buy</th>
+                    <th className="px-3 py-3 text-right">Current</th>
+                    <th className="px-3 py-3 text-right">Value</th>
+                    <th className="px-3 py-3 text-right">P&L</th>
+                    <th className="px-3 py-3"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.holdings.map((h) => {
+                    const positive = (h.pnl_pct ?? 0) >= 0;
+                    const color = positive ? "#16A34A" : "#DC2626";
+                    return (
+                      <tr key={h.id} className="border-b border-[var(--color-border-subtle)] last:border-b-0 hover:bg-[var(--background)] transition-colors">
+                        <td className="px-5 py-3">
+                          <Link href={`/stocks/${h.ticker}`} className="group">
+                            <div className="font-mono font-semibold text-sm text-[var(--color-primary)] group-hover:underline">
+                              {h.ticker}
+                              {h.is_stale && <span title="Price data may be stale" className="ml-1 text-[#D97706]">⚠</span>}
+                            </div>
+                            {h.company_name && (
+                              <div className="text-[11px] text-[var(--color-muted)] truncate max-w-[200px]">
+                                {h.company_name}
+                              </div>
+                            )}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-3 text-right font-mono text-sm tabular-nums">{h.quantity}</td>
+                        <td className="px-3 py-3 text-right font-mono text-sm tabular-nums">৳{h.buy_price.toFixed(2)}</td>
+                        <td className="px-3 py-3 text-right font-mono text-sm tabular-nums">
+                          {h.current_price != null ? `৳${h.current_price.toFixed(2)}` : "—"}
+                          {h.day_change_pct != null && h.current_price != null && (
+                            <div className="text-[10px]" style={{ color: h.day_change_pct >= 0 ? "#16A34A" : "#DC2626" }}>
+                              {h.day_change_pct >= 0 ? "+" : ""}{h.day_change_pct.toFixed(2)}%
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-right font-mono text-sm tabular-nums">
+                          ৳{(h.current_value ?? h.invested).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="px-3 py-3 text-right font-mono text-sm tabular-nums">
+                          {h.pnl != null ? (
+                            <div>
+                              <div style={{ color }}>
+                                {positive ? "+" : ""}৳{Math.abs(h.pnl).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                              </div>
+                              <div className="text-[10px]" style={{ color }}>
+                                {positive ? "+" : ""}{(h.pnl_pct ?? 0).toFixed(2)}%
+                              </div>
+                            </div>
+                          ) : "—"}
+                        </td>
+                        <td className="px-3 py-3">
+                          <button
+                            onClick={() => handleDelete(h.id)}
+                            aria-label="Delete"
+                            className="text-[var(--color-muted)] hover:text-[#DC2626] transition-colors"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
-        {/* Holdings List */}
-        {holdings.length > 0 ? (
-          <div className="space-y-3">
-            {holdings.map((h) => (
-              <div key={h.id} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-4">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className="font-mono text-[var(--color-primary)] font-medium text-sm">{h.ticker}</span>
-                    <p className="text-xs text-[var(--color-muted)]">{h.company_name}</p>
-                  </div>
-                  <button onClick={() => handleDelete(h.id)} className="text-xs text-[var(--color-muted)] hover:text-[var(--color-danger)] transition-colors">Remove</button>
-                </div>
-                <div className="grid grid-cols-3 gap-4 mt-3 pt-3 border-t border-[var(--color-border-subtle)]">
-                  <div>
-                    <div className="text-xs text-[var(--color-muted)]">Buy Price</div>
-                    <div className="font-mono text-sm tabular-nums">৳{Number(h.buy_price).toFixed(2)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-[var(--color-muted)]">Quantity</div>
-                    <div className="font-mono text-sm tabular-nums">{h.quantity}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-[var(--color-muted)]">Total Value</div>
-                    <div className="font-mono text-sm tabular-nums">৳{(Number(h.buy_price) * h.quantity).toLocaleString()}</div>
-                  </div>
-                </div>
-                {h.notes && <p className="text-xs text-[var(--color-muted)] mt-2">{h.notes}</p>}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-8 text-center">
-            <p className="font-bengali text-[var(--color-muted)] mb-2">আপনার পোর্টফোলিও খালি</p>
-            <p className="text-sm text-[var(--color-muted)]">Click &quot;+ Add Stock&quot; to start tracking your investments.</p>
+        {/* Explore CTA when zero holdings */}
+        {data && data.holdings.length === 0 && (
+          <div className="bg-gradient-to-br from-[rgba(0,102,204,0.04)] to-transparent border border-[rgba(0,102,204,0.15)] rounded-xl p-8 text-center">
+            <h3 className="font-display text-lg font-semibold mb-2">Start tracking your DSE portfolio</h3>
+            <p className="text-sm text-[var(--color-muted)] mb-4 font-bengali">
+              আপনার প্রথম স্টক যোগ করুন অথবা নিচে সার্চ করে শুরু করুন
+            </p>
+            <div className="max-w-sm mx-auto mb-4">
+              <StockSearch placeholder="Search any DSE stock..." />
+            </div>
+            <button
+              onClick={() => setShowForm(true)}
+              className="text-sm font-medium text-[var(--color-primary)] hover:underline"
+            >
+              Or add a holding manually →
+            </button>
           </div>
         )}
       </main>
+
+      {showForm && <AddHoldingModal onClose={() => setShowForm(false)} onAdded={fetchData} />}
+    </div>
+  );
+}
+
+function AddHoldingModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const [ticker, setTicker] = useState("");
+  const [quantity, setQuantity] = useState("");
+  const [buyPrice, setBuyPrice] = useState("");
+  const [buyDate, setBuyDate] = useState(new Date().toISOString().split("T")[0]);
+  const [suggestions, setSuggestions] = useState<StockAutocomplete[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tickerRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    tickerRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!ticker || ticker.length < 1) {
+      setSuggestions([]);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/stocks/search?q=${encodeURIComponent(ticker)}&limit=5`);
+        const d = await res.json();
+        setSuggestions(d.results ?? []);
+      } catch { /* ignore */ }
+    }, 150);
+  }, [ticker]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (!ticker.trim() || !quantity || !buyPrice) return;
+    setSubmitting(true);
+    try {
+      const matched = suggestions.find((s) => s.ticker.toUpperCase() === ticker.toUpperCase());
+      const res = await fetch("/api/portfolio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ticker: ticker.toUpperCase(),
+          company_name: matched?.company_name ?? ticker.toUpperCase(),
+          buy_price: parseFloat(buyPrice),
+          quantity: parseInt(quantity),
+          buy_date: buyDate,
+          notes: null,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        setError(d.error ?? "Failed to add");
+        setSubmitting(false);
+        return;
+      }
+      onAdded();
+      onClose();
+    } catch {
+      setError("Network error");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-[var(--color-border-subtle)] flex items-center justify-between">
+          <h2 className="font-display text-lg font-semibold">Add holding</h2>
+          <button onClick={onClose} className="text-[var(--color-muted)] hover:text-[var(--foreground)]" aria-label="Close">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-[var(--color-muted)] uppercase tracking-wider mb-1.5">Stock</label>
+            <div className="relative">
+              <input
+                ref={tickerRef}
+                type="text"
+                value={ticker}
+                onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                placeholder="Type ticker or company name..."
+                className="w-full px-3 py-2.5 border border-[var(--color-border)] rounded-lg font-mono text-sm focus:outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                required
+                autoComplete="off"
+              />
+              {suggestions.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-[var(--color-border)] rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+                  {suggestions.map((s) => (
+                    <button
+                      key={s.ticker}
+                      type="button"
+                      onClick={() => { setTicker(s.ticker); setSuggestions([]); }}
+                      className="w-full text-left px-3 py-2 border-b border-[var(--color-border-subtle)] last:border-b-0 hover:bg-[var(--background)]"
+                    >
+                      <div className="font-mono font-semibold text-sm text-[var(--color-primary)]">{s.ticker}</div>
+                      <div className="text-[11px] text-[var(--color-muted)] truncate">{s.company_name}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-[var(--color-muted)] uppercase tracking-wider mb-1.5">Quantity</label>
+              <input
+                type="number"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                placeholder="100"
+                min="1"
+                className="w-full px-3 py-2.5 border border-[var(--color-border)] rounded-lg font-mono text-sm focus:outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[var(--color-muted)] uppercase tracking-wider mb-1.5">Buy price (৳)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={buyPrice}
+                onChange={(e) => setBuyPrice(e.target.value)}
+                placeholder="125.50"
+                min="0.01"
+                className="w-full px-3 py-2.5 border border-[var(--color-border)] rounded-lg font-mono text-sm focus:outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-[var(--color-muted)] uppercase tracking-wider mb-1.5">Buy date</label>
+            <input
+              type="date"
+              value={buyDate}
+              onChange={(e) => setBuyDate(e.target.value)}
+              max={new Date().toISOString().split("T")[0]}
+              className="w-full px-3 py-2.5 border border-[var(--color-border)] rounded-lg font-mono text-sm focus:outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+            />
+          </div>
+
+          {error && <div className="text-xs text-[#DC2626]">{error}</div>}
+
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 border border-[var(--color-border)] text-sm font-medium py-2.5 rounded-lg hover:bg-[var(--background)]"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 bg-[var(--color-primary)] text-white text-sm font-medium py-2.5 rounded-lg hover:bg-[var(--color-primary-hover)] disabled:opacity-50"
+            >
+              {submitting ? "Adding..." : "Add holding"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
