@@ -147,7 +147,9 @@ export default async function StockPage({ params }: { params: Promise<{ ticker: 
                   <span className="text-xs text-[var(--color-muted)]">{stock.sector}</span>
                 )}
               </div>
-              <h2 className="font-display text-lg text-[var(--foreground)]">{stock.company_name}</h2>
+              {stock.company_name && stock.company_name.toUpperCase() !== stock.ticker.toUpperCase() && (
+                <h2 className="font-display text-lg text-[var(--foreground)]">{stock.company_name}</h2>
+              )}
               {stock.company_name_bn && (
                 <p className="text-sm text-[var(--color-muted)] font-bengali">{stock.company_name_bn}</p>
               )}
