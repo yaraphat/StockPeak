@@ -127,6 +127,42 @@ export async function GET(
   const portfolioValue = Math.max(100_000, Number(portfolioTotal?.total ?? 0));
   const sizing = plan ? computePositionSize(plan, portfolioValue, riskTier) : null;
 
+  // Existing holding — if the user already holds this ticker, surface their
+  // position + unrealized P&L so they don't blindly add to something they own.
+  const holdings = await sql`
+    SELECT quantity, buy_price, buy_date
+    FROM portfolio_holdings
+    WHERE user_id = ${userId} AND ticker = ${ticker}
+    ORDER BY buy_date ASC
+  `;
+  let existingHolding: {
+    totalQuantity: number;
+    avgBuyPrice: number;
+    costBasis: number;
+    currentValue: number;
+    unrealizedPnl: number;
+    unrealizedPnlPct: number;
+    firstBuyDate: string;
+    lots: number;
+  } | null = null;
+  if (holdings.length > 0) {
+    const totalQuantity = holdings.reduce((s, h: Record<string, unknown>) => s + Number(h.quantity), 0);
+    const costBasis = holdings.reduce((s, h: Record<string, unknown>) => s + Number(h.quantity) * Number(h.buy_price), 0);
+    const avgBuyPrice = totalQuantity > 0 ? costBasis / totalQuantity : 0;
+    const currentValue = totalQuantity * currentPrice;
+    const unrealizedPnl = currentValue - costBasis;
+    existingHolding = {
+      totalQuantity,
+      avgBuyPrice: Math.round(avgBuyPrice * 100) / 100,
+      costBasis: Math.round(costBasis),
+      currentValue: Math.round(currentValue),
+      unrealizedPnl: Math.round(unrealizedPnl),
+      unrealizedPnlPct: avgBuyPrice > 0 ? Math.round((unrealizedPnl / costBasis) * 10000) / 100 : 0,
+      firstBuyDate: String((holdings[0] as Record<string, unknown>).buy_date),
+      lots: holdings.length,
+    };
+  }
+
   return NextResponse.json({
     meta,
     current_price: currentPrice,
@@ -148,6 +184,7 @@ export async function GET(
     levels,
     trade_plan: plan,
     position_sizing: sizing,
+    existing_holding: existingHolding,
     ai_read: aiRead,
     red_flags: redFlags,
   });

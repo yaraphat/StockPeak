@@ -54,6 +54,16 @@ interface Analysis {
     actualCapital: number;
     actualRisk: number;
   } | null;
+  existing_holding: {
+    totalQuantity: number;
+    avgBuyPrice: number;
+    costBasis: number;
+    currentValue: number;
+    unrealizedPnl: number;
+    unrealizedPnlPct: number;
+    firstBuyDate: string;
+    lots: number;
+  } | null;
   ai_read: string[];
   red_flags: string[];
 }
@@ -167,6 +177,62 @@ export function AnalysisPanel({ ticker }: { ticker: string }) {
         </div>
       </div>
 
+      {/* Existing holding — personal context. Shown before the trade plan
+          so users know their current position before deciding to add. */}
+      {data.existing_holding && (() => {
+        const h = data.existing_holding;
+        const up = h.unrealizedPnl >= 0;
+        const color = up ? "#16A34A" : "#DC2626";
+        const bg = up ? "rgba(22,163,74,0.06)" : "rgba(220,38,38,0.06)";
+        return (
+          <div className="rounded-2xl overflow-hidden"
+               style={{ border: `1px solid ${up ? "rgba(22,163,74,0.25)" : "rgba(220,38,38,0.25)"}`, background: bg, boxShadow: "0 1px 2px rgba(0,0,0,0.04)" }}>
+            <div className="px-6 py-3 border-b" style={{ borderColor: up ? "rgba(22,163,74,0.12)" : "rgba(220,38,38,0.12)" }}>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+                    <path d="M9 22V12h6v10"/>
+                  </svg>
+                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color }}>
+                    You already hold {data.meta.ticker}
+                  </span>
+                </div>
+                <span className="text-[11px] text-[var(--color-muted)]">
+                  Since {new Date(h.firstBuyDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                  {h.lots > 1 && ` · ${h.lots} lots`}
+                </span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 px-6 py-4 text-sm">
+              <div>
+                <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-wider">Quantity</div>
+                <div className="font-mono font-semibold tabular-nums">{h.totalQuantity.toLocaleString("en-IN")}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-wider">Avg buy</div>
+                <div className="font-mono font-semibold tabular-nums">৳{h.avgBuyPrice.toFixed(2)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-wider">Value</div>
+                <div className="font-mono font-semibold tabular-nums">৳{h.currentValue.toLocaleString("en-IN")}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-wider">Unrealized P&amp;L</div>
+                <div className="font-mono font-semibold tabular-nums" style={{ color }}>
+                  {up ? "+" : ""}৳{h.unrealizedPnl.toLocaleString("en-IN")} ({up ? "+" : ""}{h.unrealizedPnlPct.toFixed(2)}%)
+                </div>
+              </div>
+            </div>
+            {data.signal === "STRONG BUY" || data.signal === "BUY" ? (
+              <div className="px-6 pb-4 text-xs text-[var(--color-muted)]">
+                Signal is {data.signal}. Adding to this position increases your concentration in {data.meta.ticker}. Consider your portfolio allocation before averaging up.
+              </div>
+            ) : null}
+          </div>
+        );
+      })()}
+
       {/* Trade Plan */}
       {plan && (
         <div className="bg-white rounded-2xl overflow-hidden"
@@ -232,7 +298,7 @@ export function AnalysisPanel({ ticker }: { ticker: string }) {
               </div>
               <div className="divide-y divide-[rgba(0,102,204,0.08)]">
                 {plan.ladder.map((step, i) => (
-                  <div key={i} className="px-4 py-3 flex items-center justify-between gap-4">
+                  <div key={i} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold text-white"
                            style={{ background: "linear-gradient(135deg, #0066CC 0%, #0052A3 100%)" }}>
@@ -242,7 +308,7 @@ export function AnalysisPanel({ ticker }: { ticker: string }) {
                         When price reaches <span className="font-mono font-semibold tabular-nums">৳{step.trigger.toFixed(2)}</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 flex-shrink-0">
+                    <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 pl-9 sm:pl-0">
                       <span className="text-xs text-[var(--color-muted)]">raise stop to</span>
                       <span className="font-mono font-semibold tabular-nums text-sm text-[var(--color-primary)]">
                         ৳{step.stop.toFixed(2)}
@@ -253,7 +319,7 @@ export function AnalysisPanel({ ticker }: { ticker: string }) {
                     </div>
                   </div>
                 ))}
-                <div className="px-4 py-3 flex items-center justify-between gap-4"
+                <div className="px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4"
                      style={{ background: "rgba(22,163,74,0.05)" }}>
                   <div className="flex items-center gap-3">
                     <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold text-white"
@@ -262,7 +328,7 @@ export function AnalysisPanel({ ticker }: { ticker: string }) {
                     </div>
                     <div className="text-sm font-medium">Final target</div>
                   </div>
-                  <span className="font-mono font-semibold tabular-nums text-sm" style={{ color: "#16A34A" }}>
+                  <span className="font-mono font-semibold tabular-nums text-sm pl-9 sm:pl-0" style={{ color: "#16A34A" }}>
                     ৳{plan.target2.toFixed(2)}  (+{plan.target2Pct.toFixed(1)}%)
                   </span>
                 </div>
