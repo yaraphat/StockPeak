@@ -66,6 +66,17 @@ def main():
     logger.info("=== Stock Peak Daily Picks Pipeline ===")
     logger.info("Time: %s", datetime.now().isoformat())
 
+    sys.path.insert(0, SCRIPTS_DIR)
+    from market_state import MarketState, get_market_state, record_state
+    state, details = get_market_state()
+    logger.info("Market state: %s  %s", state, details)
+    record_state(state, details)
+    if state == MarketState.CLOSED_HOLIDAY:
+        logger.info("Market closed (%s) — skipping pipeline.", details.get("reason"))
+        return
+    if state == MarketState.UNKNOWN:
+        logger.warning("Market state UNKNOWN — proceeding anyway; broker_agent will surface data issues.")
+
     today = datetime.now().strftime("%Y-%m-%d")
     cand_path = f"{TMP_DIR}/stockpeak-candidates-{today}.json"
     picks_path = f"{TMP_DIR}/stockpeak-picks-{today}.json"

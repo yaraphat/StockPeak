@@ -69,41 +69,23 @@ OWNER_TELEGRAM_ID = os.environ.get("OWNER_TELEGRAM_ID", "")
 BROKER_REPORT_PATH = os.environ.get("BROKER_REPORT_PATH", "/tmp/stockpeak-broker-report.json")
 LAST_RUN_FALLBACK_PATH = f"{LOG_DIR}/last-run.txt"
 
-# DSE Market holidays 2026 (BDT dates — hardcoded per DSE calendar + BD national holidays)
-# Ad-hoc holidays added here when announced by BSEC.
-DSE_HOLIDAYS_2026 = {
-    "2026-02-21",  # Ekushey February / International Mother Language Day
-    "2026-03-17",  # Birth of Sheikh Mujibur Rahman (observed)
-    "2026-03-26",  # Independence Day
-    "2026-04-14",  # Bengali New Year (Pohela Boishakh) — single-day holiday
-    "2026-05-01",  # May Day / Labour Day
-    "2026-06-07",  # Eid ul-Adha (approx — confirm with BSEC)
-    "2026-06-08",  # Eid ul-Adha holiday
-    "2026-06-09",  # Eid ul-Adha holiday
-    "2026-08-15",  # National Mourning Day
-    "2026-10-20",  # Durga Puja (Bijoya Dashami — approx)
-    "2026-12-16",  # Victory Day
-    "2026-12-25",  # Christmas Day
-    # Eid ul-Fitr approx — confirm with BSEC 1 month before
-    "2026-03-30",  # Eid ul-Fitr day 1 (approx)
-    "2026-03-31",  # Eid ul-Fitr day 2 (approx)
-    "2026-04-01",  # Eid ul-Fitr day 3 (approx)
-}
+from market_state import MarketState, get_market_state
 
 
 def is_market_open(dt: Optional[datetime] = None) -> bool:
-    """Return True if DSE is open on the given date (default: today BDT)."""
+    """
+    Return True if DSE is operating today.
+
+    Structural rule only: Fri/Sat are weekend (DSE charter). For trading-day
+    signals (scheduled jobs that fire before market open), this is all we
+    check — the pipeline itself detects surprise closures via live data.
+
+    For stricter intraday checks use get_market_state() directly.
+    """
     if dt is None:
         dt = datetime.now(BDT)
-    date_str = dt.strftime("%Y-%m-%d")
-    # DSE is open Mon-Thu (Fri is half-day but typically treated as closed for our purposes)
-    # DSE trading: Sun-Thu in Bangladesh
-    weekday = dt.weekday()  # Mon=0, Sun=6
-    # Bangladesh week: Sun-Thu are trading days, Fri-Sat are weekend
-    if weekday in (4, 5):  # Friday, Saturday
-        return False
-    if date_str in DSE_HOLIDAYS_2026:
-        logger.info("Market holiday: %s", date_str)
+    weekday = dt.weekday()
+    if weekday in (4, 5):
         return False
     return True
 
