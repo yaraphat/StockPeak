@@ -51,7 +51,9 @@ async function get52WeekStats(ticker: string) {
     const rows = await sql`
       SELECT MAX(high) AS high, MIN(low) AS low
       FROM stock_data
-      WHERE ticker = ${ticker} AND date >= CURRENT_DATE - INTERVAL '52 weeks'
+      WHERE ticker = ${ticker}
+        AND date >= CURRENT_DATE - INTERVAL '52 weeks'
+        AND high > 0 AND low > 0
     `;
     return rows[0] ?? null;
   } catch {
@@ -84,6 +86,7 @@ export default async function StockPage({ params }: { params: Promise<{ ticker: 
             userEmail={(user as Record<string, unknown>).email as string | null}
             accessStatus={access?.accessStatus ?? null}
             trialDaysRemaining={access?.trialDaysRemaining ?? null}
+            currentTier={access?.currentTier ?? null}
           />
         ) : <PublicHeader />}
         <main className="max-w-3xl mx-auto px-6 py-16 text-center">
@@ -110,6 +113,7 @@ export default async function StockPage({ params }: { params: Promise<{ ticker: 
           userEmail={(user as Record<string, unknown>).email as string | null}
           accessStatus={access?.accessStatus ?? null}
           trialDaysRemaining={access?.trialDaysRemaining ?? null}
+          currentTier={access?.currentTier ?? null}
         />
       ) : <PublicHeader />}
 

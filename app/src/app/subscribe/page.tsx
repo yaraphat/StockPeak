@@ -29,6 +29,7 @@ export default async function SubscribePage() {
         userEmail={user.email as string | null}
         accessStatus={access?.accessStatus ?? null}
         trialDaysRemaining={access?.trialDaysRemaining ?? null}
+        currentTier={access?.currentTier ?? null}
       />
       <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
         <div className="text-center mb-8">

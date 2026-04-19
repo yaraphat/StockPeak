@@ -30,7 +30,7 @@ export function StockChartClient({ ticker, paid, loggedIn }: { ticker: string; p
       .finally(() => setLoading(false));
   }, [ticker, days]);
 
-  const maxUnauth = 30;
+  const maxUnauth = 180; // keep in sync with MAX_DAYS_UNAUTH in /api/stocks/[t]/history
 
   return (
     <div>

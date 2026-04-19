@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { getDb } from "@/lib/postgres";
 import { getUserAccess, hasActiveAccess } from "@/lib/access";
 
-const MAX_DAYS_UNAUTH = 30;
+const MAX_DAYS_UNAUTH = 180; // 6 months — enough to show trend + conversion value
 const MAX_DAYS_PAID = 730; // 2 years
 
 export async function GET(

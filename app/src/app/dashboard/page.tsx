@@ -134,6 +134,7 @@ export default async function DashboardPage() {
         riskTier={riskProfile?.riskTier}
         accessStatus={access?.accessStatus ?? null}
         trialDaysRemaining={access?.trialDaysRemaining ?? null}
+        currentTier={access?.currentTier ?? null}
       />
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-4">
@@ -253,6 +254,7 @@ function DashboardPlaceholder({ userName, userEmail, access }: { userName: strin
         userEmail={userEmail}
         accessStatus={access?.accessStatus ?? null}
         trialDaysRemaining={access?.trialDaysRemaining ?? null}
+        currentTier={access?.currentTier ?? null}
       />
       <main className="max-w-3xl mx-auto px-6 py-16 text-center">
         <h1 className="font-display text-2xl font-semibold mb-3">Getting things ready...</h1>

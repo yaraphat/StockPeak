@@ -75,6 +75,7 @@ export default async function WelcomePage() {
         userEmail={user.email as string | null}
         accessStatus={access?.accessStatus ?? null}
         trialDaysRemaining={access?.trialDaysRemaining ?? null}
+        currentTier={access?.currentTier ?? null}
       />
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 py-10">

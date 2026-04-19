@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { StockSearch } from "@/components/stock-search";
+import { getScorecard } from "@/lib/db";
 
-export default function Home() {
+const MIN_RESOLVED_FOR_STATS = 10;
+
+export default async function Home() {
+  const scorecard = await getScorecard().catch(() => null);
+  const resolved = scorecard ? scorecard.target_hits + scorecard.stop_hits : 0;
+  const hasStats = scorecard != null && resolved >= MIN_RESOLVED_FOR_STATS;
   return (
     <main className="relative">
       {/* Glossy hero with radial glow + subtle grid */}
@@ -90,40 +96,54 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid grid-cols-3 divide-x divide-[var(--color-border-subtle)]">
-            <div className="p-6 text-center">
-              <div
-                className="font-mono text-4xl font-bold tabular-nums"
-                style={{
-                  background: "linear-gradient(180deg, #16A34A 0%, #15803D 100%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
-                }}
-              >
-                62%
+          {hasStats ? (
+            <div className="grid grid-cols-3 divide-x divide-[var(--color-border-subtle)]">
+              <div className="p-6 text-center">
+                <div
+                  className="font-mono text-4xl font-bold tabular-nums"
+                  style={{
+                    background: "linear-gradient(180deg, #16A34A 0%, #15803D 100%)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text",
+                  }}
+                >
+                  {scorecard!.hit_rate}%
+                </div>
+                <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-1">Hit Rate</div>
               </div>
-              <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-1">Hit Rate</div>
-            </div>
-            <div className="p-6 text-center">
-              <div className="font-mono text-4xl font-bold tabular-nums">43</div>
-              <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-1">Total Picks</div>
-            </div>
-            <div className="p-6 text-center">
-              <div
-                className="font-mono text-4xl font-bold tabular-nums"
-                style={{
-                  background: "linear-gradient(180deg, #16A34A 0%, #15803D 100%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
-                }}
-              >
-                +7.2%
+              <div className="p-6 text-center">
+                <div className="font-mono text-4xl font-bold tabular-nums">{scorecard!.total_picks}</div>
+                <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-1">Total Picks</div>
               </div>
-              <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-1">Avg Gain</div>
+              <div className="p-6 text-center">
+                <div
+                  className="font-mono text-4xl font-bold tabular-nums"
+                  style={{
+                    background: scorecard!.avg_gain >= 0
+                      ? "linear-gradient(180deg, #16A34A 0%, #15803D 100%)"
+                      : "linear-gradient(180deg, #DC2626 0%, #991B1B 100%)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text",
+                  }}
+                >
+                  {scorecard!.avg_gain >= 0 ? "+" : ""}{scorecard!.avg_gain}%
+                </div>
+                <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-1">Avg Gain</div>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="px-6 py-8 text-center">
+              <p className="text-sm text-[var(--color-muted)] font-bengali mb-2">
+                প্রথম {MIN_RESOLVED_FOR_STATS}টি পিক সম্পন্ন হওয়ার পর লাইভ পারফরম্যান্স স্ট্যাটস এখানে দেখানো হবে।
+              </p>
+              <p className="text-xs text-[var(--color-muted)]">
+                Live performance stats appear here after the first {MIN_RESOLVED_FOR_STATS} picks resolve.
+                {scorecard && scorecard.total_picks > 0 && ` So far: ${scorecard.total_picks} pick${scorecard.total_picks === 1 ? "" : "s"}, ${resolved} resolved.`}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Locked teaser — "today's picks are behind the paywall" */}
@@ -151,7 +171,7 @@ export default function Home() {
                 <rect x="3" y="11" width="18" height="11" rx="2"/>
                 <path d="M7 11V7a5 5 0 0110 0v4"/>
               </svg>
-              Pro only
+              Members only
             </span>
           </div>
 
@@ -203,7 +223,7 @@ export default function Home() {
                     <path d="M7 11V7a5 5 0 0110 0v4"/>
                   </svg>
                 </div>
-                <h4 className="font-semibold text-sm mb-1">Today&apos;s picks are for Pro subscribers</h4>
+                <h4 className="font-semibold text-sm mb-1">Today&apos;s picks are for subscribers</h4>
                 <p className="text-xs text-[var(--color-muted)] font-bengali mb-4">
                   ৭ দিন ফ্রি ট্রায়াল শুরু করুন — কার্ড লাগবে না
                 </p>
@@ -244,12 +264,13 @@ export default function Home() {
       </section>
 
       {/* Pricing — glossy with gradient + accent */}
-      <section className="px-6 pb-16 max-w-3xl mx-auto">
+      <section className="px-6 pb-16 max-w-5xl mx-auto">
         <h2 className="font-display text-2xl font-semibold mb-2 text-center">Pricing</h2>
         <p className="text-center text-sm text-[var(--color-muted)] mb-8 font-bengali">
           ৭ দিন ফ্রি ট্রায়াল · কোনো কার্ড লাগবে না
         </p>
-        <div className="grid sm:grid-cols-2 gap-4">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Free */}
           <div
             className="bg-white rounded-2xl p-6 transition-all hover:-translate-y-1"
             style={{
@@ -260,14 +281,16 @@ export default function Home() {
             <h3 className="font-semibold text-lg mb-1">Free</h3>
             <div className="font-display text-4xl font-bold mb-4 tabular-nums">৳০</div>
             <ul className="space-y-2 text-sm text-[var(--color-muted)] mb-6 font-bengali">
-              <li className="flex items-start gap-2"><span className="text-[var(--color-muted)] mt-0.5">·</span>১টি পিক / দিন (বিলম্বিত)</li>
-              <li className="flex items-start gap-2"><span className="text-[var(--color-muted)] mt-0.5">·</span>বিশ্লেষণ ছাড়া</li>
-              <li className="flex items-start gap-2"><span className="text-[var(--color-muted)] mt-0.5">·</span>ওয়েব ড্যাশবোর্ড</li>
+              <li className="flex items-start gap-2"><span className="text-[var(--color-muted)] mt-0.5">·</span>স্টক সার্চ + ১ মাসের চার্ট</li>
+              <li className="flex items-start gap-2"><span className="text-[var(--color-muted)] mt-0.5">·</span>অ্যাগ্রিগেট ট্র্যাক রেকর্ড</li>
+              <li className="flex items-start gap-2"><span className="text-[var(--color-muted)] mt-0.5">·</span>পিক বা বিশ্লেষণ নেই</li>
             </ul>
             <Link href="/signup" className="block text-center border border-[var(--color-border)] font-semibold py-2.5 rounded-lg hover:bg-[var(--background)] hover:border-[var(--color-muted)] transition-all text-sm">
               Sign Up Free
             </Link>
           </div>
+
+          {/* Entry (formerly "Pro") */}
           <div
             className="relative rounded-2xl p-6 transition-all hover:-translate-y-1"
             style={{
@@ -285,7 +308,7 @@ export default function Home() {
             >
               Popular
             </span>
-            <h3 className="font-semibold text-lg mb-1">Pro</h3>
+            <h3 className="font-semibold text-lg mb-1">Entry</h3>
             <div className="font-display text-4xl font-bold mb-4 tabular-nums">
               ৳২৬০<span className="text-base font-normal text-[var(--color-muted)]">/মাস</span>
             </div>
@@ -305,6 +328,58 @@ export default function Home() {
               style={{
                 background: "linear-gradient(135deg, #0066CC 0%, #0052A3 100%)",
                 boxShadow: "0 2px 4px rgba(0,102,204,0.2), inset 0 1px 0 rgba(255,255,255,0.15)",
+              }}
+            >
+              ৭ দিন ফ্রি ট্রায়াল →
+            </Link>
+          </div>
+
+          {/* Analyst — new tier */}
+          <div
+            className="relative rounded-2xl p-6 transition-all hover:-translate-y-1"
+            style={{
+              background: "linear-gradient(135deg, #1C1917 0%, #0f172a 100%)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              boxShadow: "0 1px 2px rgba(0,0,0,0.2), 0 8px 24px rgba(0,0,0,0.25), 0 24px 48px rgba(0,0,0,0.15)",
+            }}
+          >
+            <span
+              className="absolute -top-3 left-6 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full"
+              style={{
+                background: "linear-gradient(135deg, #fef3c7 0%, #fcd34d 100%)",
+                color: "#78350f",
+                boxShadow: "0 2px 6px rgba(252,211,77,0.4)",
+              }}
+            >
+              Analyst
+            </span>
+            <h3 className="font-semibold text-lg mb-1 text-white">Analyst</h3>
+            <div className="font-display text-4xl font-bold mb-4 tabular-nums text-white">
+              ৳৫৫০<span className="text-base font-normal text-white/60">/মাস</span>
+            </div>
+            <ul className="space-y-2 text-sm mb-6 font-bengali">
+              {[
+                "Entry-এর সব কিছু",
+                "৪০০+ DSE স্টকের বিশ্লেষণ (Rankings)",
+                "প্রতি স্টকে AI সিগন্যাল + ট্রেড প্ল্যান",
+                "স্টপ-লস ল্যাডার (breakeven → +1.5R)",
+                "আপনার রিস্ক অনুযায়ী পজিশন সাইজিং",
+              ].map((f) => (
+                <li key={f} className="flex items-start gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fcd34d" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 flex-shrink-0">
+                    <path d="M20 6L9 17l-5-5"/>
+                  </svg>
+                  <span className="text-white/85">{f}</span>
+                </li>
+              ))}
+            </ul>
+            <Link
+              href="/signup?tier=analyst"
+              className="block text-center font-semibold py-3 rounded-lg transition-all text-sm"
+              style={{
+                background: "linear-gradient(135deg, #fef3c7 0%, #fcd34d 100%)",
+                color: "#78350f",
+                boxShadow: "0 2px 4px rgba(252,211,77,0.2), inset 0 1px 0 rgba(255,255,255,0.3)",
               }}
             >
               ৭ দিন ফ্রি ট্রায়াল →

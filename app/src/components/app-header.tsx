@@ -12,9 +12,10 @@ interface Props {
   riskTier?: string | null;
   accessStatus?: "subscribed" | "trial" | "grace" | "expired" | null;
   trialDaysRemaining?: number | null;
+  currentTier?: "entry" | "analyst" | null;
 }
 
-export function AppHeader({ userName, userEmail, riskTier, accessStatus, trialDaysRemaining }: Props) {
+export function AppHeader({ userName, userEmail, riskTier, accessStatus, trialDaysRemaining, currentTier }: Props) {
   const pathname = usePathname();
 
   const navLinks = [
@@ -64,8 +65,12 @@ export function AppHeader({ userName, userEmail, riskTier, accessStatus, trialDa
             </Link>
           )}
           {accessStatus === "subscribed" && (
-            <span className="hidden sm:inline-block text-[11px] font-medium px-2 py-0.5 rounded-full bg-[rgba(22,163,74,0.1)] text-[#16A34A]">
-              Pro
+            <span className={`hidden sm:inline-block text-[11px] font-medium px-2 py-0.5 rounded-full ${
+              currentTier === "analyst"
+                ? "bg-[rgba(0,102,204,0.1)] text-[var(--color-primary)]"
+                : "bg-[rgba(22,163,74,0.1)] text-[#16A34A]"
+            }`}>
+              {currentTier === "analyst" ? "Analyst" : currentTier === "entry" ? "Entry" : "Pro"}
             </span>
           )}
           <NotificationBell />
