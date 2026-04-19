@@ -45,6 +45,16 @@ async function getLatestPrice(ticker: string) {
   }
 }
 
+// Indian-English / Bangladeshi volume formatting: 12,34,567 → "12.3 লাখ" (lakh).
+// Crore = 1e7, Lakh = 1e5, Thousand = 1e3.
+function formatVolume(v: number): string {
+  if (!Number.isFinite(v) || v < 0) return "—";
+  if (v >= 1e7) return `${(v / 1e7).toFixed(2).replace(/\.?0+$/, "")} crore`;
+  if (v >= 1e5) return `${(v / 1e5).toFixed(2).replace(/\.?0+$/, "")} lakh`;
+  if (v >= 1e3) return `${(v / 1e3).toFixed(1).replace(/\.?0+$/, "")}K`;
+  return v.toLocaleString("en-IN");
+}
+
 async function get52WeekStats(ticker: string) {
   const sql = getDb();
   try {
@@ -143,19 +153,27 @@ export default async function StockPage({ params }: { params: Promise<{ ticker: 
               )}
             </div>
 
-            {latest && (
-              <div className="text-right">
-                <div className="font-mono text-2xl font-semibold tabular-nums">
-                  ৳{Number(latest.close).toFixed(2)}
+            {latest && (() => {
+              const dataAgeDays = Math.floor(
+                (Date.now() - new Date(latest.date as string).getTime()) / 86_400_000
+              );
+              const stale = dataAgeDays > 3;
+              return (
+                <div className="text-right">
+                  <div className="font-mono text-2xl font-semibold tabular-nums">
+                    ৳{Number(latest.close).toFixed(2)}
+                  </div>
+                  <div className="font-mono text-sm tabular-nums" style={{ color: changeColor }}>
+                    {changePositive ? "+" : ""}{Number(latest.change_pct).toFixed(2)}%
+                  </div>
+                  <div className={`text-[10px] mt-1 ${stale ? "text-[#D97706] font-medium" : "text-[var(--color-muted)]"}`}>
+                    {stale && "⚠ "}
+                    As of {new Date(latest.date as string).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    {stale && ` · ${dataAgeDays} day${dataAgeDays === 1 ? "" : "s"} stale`}
+                  </div>
                 </div>
-                <div className="font-mono text-sm tabular-nums" style={{ color: changeColor }}>
-                  {changePositive ? "+" : ""}{Number(latest.change_pct).toFixed(2)}%
-                </div>
-                <div className="text-[10px] text-[var(--color-muted)] mt-1">
-                  As of {new Date(latest.date as string).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
 
           {stats && (
@@ -171,7 +189,7 @@ export default async function StockPage({ params }: { params: Promise<{ ticker: 
               <div>
                 <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-wider mb-0.5">Volume</div>
                 <div className="font-mono text-sm font-medium">
-                  {latest ? Number(latest.volume).toLocaleString() : "—"}
+                  {latest ? formatVolume(Number(latest.volume)) : "—"}
                 </div>
               </div>
             </div>

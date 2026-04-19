@@ -28,6 +28,7 @@ async function fetchUserAccess(userId: string) {
     access_status: rows[0].access_status,
     trial_ends_at: rows[0].trial_ends_at,
     subscription_expires_at: rows[0].subscription_expires_at,
+    current_tier: rows[0].current_tier,
   };
 }
 
@@ -119,6 +120,7 @@ export const authOptions: NextAuthOptions = {
           token.sessionVersion = access.session_version;
           token.accessStatus = access.access_status;
           token.subscriptionExpiresAt = access.subscription_expires_at;
+          token.currentTier = access.current_tier;
         }
       }
 
@@ -133,6 +135,7 @@ export const authOptions: NextAuthOptions = {
         u.sessionVersion = token.sessionVersion;
         u.accessStatus = token.accessStatus ?? "expired";
         u.subscriptionExpiresAt = token.subscriptionExpiresAt;
+        u.currentTier = token.currentTier ?? null;
       }
       return session;
     },

@@ -47,6 +47,7 @@ export default function RankingsPage() {
   const [gated, setGated] = useState(false);
   const [sort, setSort] = useState<"score" | "rsi" | "volume" | "ticker" | "change">("score");
   const [signalFilter, setSignalFilter] = useState<Signal | "ALL">("ALL");
+  const [query, setQuery] = useState("");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -78,6 +79,7 @@ export default function RankingsPage() {
         userName={u.name as string | null}
         userEmail={u.email as string | null}
         accessStatus={(u.accessStatus as "subscribed" | "trial" | "grace" | "expired") ?? null}
+        currentTier={(u.currentTier as "entry" | "analyst") ?? null}
       />
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-4">
@@ -131,7 +133,28 @@ export default function RankingsPage() {
 
             {/* Controls */}
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-xs font-medium text-[var(--color-muted)] uppercase tracking-wider">Sort by</span>
+              <div className="relative flex-1 min-w-[200px] max-w-sm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                     className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)] pointer-events-none">
+                  <circle cx="11" cy="11" r="8"/>
+                  <path d="M21 21l-4.3-4.3"/>
+                </svg>
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Filter by ticker or company..."
+                  className="w-full bg-white border border-[var(--color-border)] rounded-md pl-9 pr-8 py-1.5 text-sm focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+                />
+                {query && (
+                  <button
+                    onClick={() => setQuery("")}
+                    aria-label="Clear search"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-[var(--color-muted)] hover:bg-[var(--background)]"
+                  >×</button>
+                )}
+              </div>
+              <span className="text-xs font-medium text-[var(--color-muted)] uppercase tracking-wider">Sort</span>
               {(["score", "change", "rsi", "volume", "ticker"] as const).map((s) => (
                 <button
                   key={s}
@@ -173,7 +196,16 @@ export default function RankingsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.rankings.map((r) => {
+                    {data.rankings
+                      .filter((r) => {
+                        if (!query.trim()) return true;
+                        const q = query.trim().toLowerCase();
+                        return (
+                          r.ticker.toLowerCase().includes(q) ||
+                          (r.company_name?.toLowerCase().includes(q) ?? false)
+                        );
+                      })
+                      .map((r) => {
                       const sm = SIGNAL_META[r.signal];
                       const positive = (r.change_pct ?? 0) >= 0;
                       return (
@@ -222,6 +254,14 @@ export default function RankingsPage() {
               {data.rankings.length === 0 && (
                 <div className="p-8 text-center text-sm text-[var(--color-muted)]">
                   No stocks match this filter. Try clearing filters.
+                </div>
+              )}
+              {data.rankings.length > 0 && query.trim() && data.rankings.filter((r) => {
+                const q = query.trim().toLowerCase();
+                return r.ticker.toLowerCase().includes(q) || (r.company_name?.toLowerCase().includes(q) ?? false);
+              }).length === 0 && (
+                <div className="p-8 text-center text-sm text-[var(--color-muted)]">
+                  No matches for &ldquo;{query}&rdquo;.
                 </div>
               )}
             </div>

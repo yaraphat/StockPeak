@@ -68,13 +68,23 @@ def sync():
         if category not in ("A", "B", "N", "Z"):
             category = None
 
+        # bdshare get_current_trade_data doesn't actually return company_name —
+        # line 66 above falls back to ticker. Don't let that fallback overwrite
+        # a real company_name already backfilled from another source (see
+        # scripts/backfill_company_names.py). Only write company_name on INSERT
+        # and if the incoming value is different from the ticker.
         cur.execute(
             """
             INSERT INTO dse_stocks (ticker, company_name, category, is_active, updated_at)
             VALUES (%s, %s, %s, true, now())
             ON CONFLICT (ticker) DO UPDATE SET
-              company_name = EXCLUDED.company_name,
-              category = EXCLUDED.category,
+              company_name = CASE
+                WHEN EXCLUDED.company_name != dse_stocks.ticker
+                     AND EXCLUDED.company_name != dse_stocks.company_name
+                  THEN EXCLUDED.company_name
+                ELSE dse_stocks.company_name
+              END,
+              category = COALESCE(EXCLUDED.category, dse_stocks.category),
               is_active = true,
               updated_at = now()
             """,
