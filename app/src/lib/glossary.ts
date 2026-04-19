@@ -46,9 +46,9 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     bn: "দাম এখানে নেমে এলে সাথে সাথেই বিক্রি করুন। এটি আপনার লোকসান সীমিত রাখে।",
   },
   risk_reward: {
-    title: "Risk / Reward",
-    en: "How much you can win vs. how much you risk. 2:1 means you risk ৳1 to make ৳2. Higher is better — avoid anything under 1.5:1.",
-    bn: "লাভের সম্ভাবনা বনাম ঝুঁকি। ২:১ মানে ১ টাকা ঝুঁকিতে ২ টাকা লাভ। ১.৫ এর নিচে এড়িয়ে চলুন।",
+    title: "Risk / Reward (to T2)",
+    en: "How much you can win at the full target (T2) vs. how much you risk. 2:1 means you risk ৳1 to make ৳2. Calculated against T2 — the main plan goal. T1 is just a halfway partial-profit point. Avoid plans under 1.5:1.",
+    bn: "পূর্ণ টার্গেট (T2) পর্যন্ত লাভ বনাম ঝুঁকি। ২:১ মানে ১ টাকা ঝুঁকিতে ২ টাকা লাভ। T1 মাঝপথে অর্ধেক শেয়ার বিক্রির জায়গা। ১.৫ এর নিচে এড়িয়ে চলুন।",
   },
   stop_ladder: {
     title: "Stop-loss ladder",

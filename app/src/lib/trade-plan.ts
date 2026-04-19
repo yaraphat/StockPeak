@@ -56,8 +56,9 @@ export interface TradePlan {
 
   // Risk math
   riskPerShare: number;   // R value
-  rewardPerShare: number; // R to T1
-  riskReward: number;     // 1:X to T1
+  rewardPerShare: number; // reward to T2
+  riskReward: number;     // R:R to T2 (primary plan goal)
+  riskRewardT1: number;   // R:R to T1 (halfway partial-profit)
   atr: number;
 
   // Position sizing (per user's tier)
@@ -126,9 +127,14 @@ export function generateTradePlan(
     });
   }
 
-  // Risk math
+  // Risk math. T2 is the primary plan goal (targetMultiplier · ATR away),
+  // T1 is just the halfway partial-profit point. Showing "R:R to T1" (which
+  // is always <1 by construction since T1 is half the T2 distance) reads
+  // like a losing plan, so the headline riskReward is to T2.
   const rewardT1 = target1 - entryMid;
-  const riskReward = rewardT1 > 0 && R > 0 ? rewardT1 / R : 0;
+  const rewardT2 = target2 - entryMid;
+  const riskRewardT1 = rewardT1 > 0 && R > 0 ? rewardT1 / R : 0;
+  const riskRewardT2 = rewardT2 > 0 && R > 0 ? rewardT2 / R : 0;
 
   return {
     entryLow,
@@ -142,8 +148,9 @@ export function generateTradePlan(
     initialStopPct: pct((initialStop - entryMid) / entryMid),
     ladder,
     riskPerShare: round(R),
-    rewardPerShare: round(rewardT1),
-    riskReward: Math.round(riskReward * 10) / 10,
+    rewardPerShare: round(rewardT2),
+    riskReward: Math.round(riskRewardT2 * 10) / 10,
+    riskRewardT1: Math.round(riskRewardT1 * 10) / 10,
     atr: round(atr),
     portfolioPctSuggested: profile.positionPct,
     timeframe:

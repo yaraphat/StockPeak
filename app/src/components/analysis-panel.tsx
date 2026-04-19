@@ -43,6 +43,7 @@ interface Analysis {
     riskPerShare: number;
     rewardPerShare: number;
     riskReward: number;
+    riskRewardT1: number;
     atr: number;
     portfolioPctSuggested: number;
     timeframe: string;
@@ -244,6 +245,7 @@ export function AnalysisPanel({ ticker }: { ticker: string }) {
             </div>
             <span className="inline-flex items-center gap-1 text-xs font-mono text-[var(--color-muted)]">
               R/R {plan.riskReward.toFixed(1)}:1
+              <span className="text-[10px] text-[var(--color-muted)] opacity-70">(to T2)</span>
               <InfoTip term="risk_reward" />
             </span>
           </div>
