@@ -30,27 +30,50 @@ export function InfoTip({ term, className = "" }: { term: string; className?: st
         type="button"
         aria-label={`What is ${entry.title}?`}
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
-        className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[9px] font-bold text-[var(--color-muted)] bg-[var(--background)] border border-[var(--color-border)] hover:text-[var(--color-primary)] hover:border-[var(--color-primary)] transition-colors cursor-help"
+        className="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full text-[10px] font-semibold leading-none text-[var(--color-muted)] bg-white border border-[var(--color-border)] hover:text-white hover:bg-[var(--color-primary)] hover:border-[var(--color-primary)] hover:shadow-[0_2px_6px_rgba(0,102,204,0.3)] transition-all cursor-help select-none"
+        style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontStyle: 'italic' }}
       >
         i
       </button>
       {open && (
         <span
           role="tooltip"
-          className="absolute z-50 left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 pointer-events-none"
+          className="absolute z-50 left-1/2 -translate-x-1/2 bottom-full mb-2 w-72 pointer-events-none normal-case tracking-normal"
         >
-          <span className="block bg-[#1a1a1a] text-white text-[11px] leading-snug rounded-lg px-3 py-2 shadow-[0_8px_24px_rgba(0,0,0,0.2)]">
-            <span className="block font-semibold mb-1 text-white">{entry.title}</span>
-            <span className="block text-[rgba(255,255,255,0.85)]">{entry.en}</span>
+          <span
+            className="block rounded-xl px-4 py-3 text-left normal-case tracking-normal"
+            style={{
+              background: "linear-gradient(180deg, #1f1d1a 0%, #141311 100%)",
+              color: "#F5F5F4",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.15), 0 12px 32px rgba(0,0,0,0.25)",
+              border: "1px solid rgba(255,255,255,0.08)",
+            }}
+          >
+            <span className="flex items-center justify-between gap-2 mb-1.5 pb-1.5 border-b border-[rgba(255,255,255,0.1)]">
+              <span className="font-display text-[13px] font-semibold tracking-tight text-white">
+                {entry.title}
+              </span>
+              <span className="text-[9px] uppercase tracking-wider text-[rgba(255,255,255,0.35)]">
+                Glossary
+              </span>
+            </span>
+            <span className="block text-[12px] leading-relaxed text-[rgba(255,255,255,0.9)]">
+              {entry.en}
+            </span>
             {entry.bn && (
-              <span className="block mt-1 pt-1 border-t border-[rgba(255,255,255,0.12)] text-[rgba(255,255,255,0.75)] font-bengali">
+              <span className="block mt-2 pt-2 border-t border-[rgba(255,255,255,0.1)] text-[12px] leading-relaxed text-[rgba(255,255,255,0.75)] font-bengali">
                 {entry.bn}
               </span>
             )}
           </span>
           <span
-            className="absolute left-1/2 -translate-x-1/2 top-full w-2 h-2 rotate-45 bg-[#1a1a1a]"
-            style={{ marginTop: -4 }}
+            className="absolute left-1/2 -translate-x-1/2 top-full w-2 h-2 rotate-45"
+            style={{
+              marginTop: -4,
+              background: "#141311",
+              borderRight: "1px solid rgba(255,255,255,0.08)",
+              borderBottom: "1px solid rgba(255,255,255,0.08)",
+            }}
           />
         </span>
       )}

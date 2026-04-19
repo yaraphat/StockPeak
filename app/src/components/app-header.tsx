@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { StockSearch } from "./stock-search";
 import { NotificationBell } from "./notification-bell";
+import { InfoTip } from "./info-tip";
 
 interface Props {
   userName?: string | null;
@@ -53,16 +54,19 @@ export function AppHeader({ userName, userEmail, riskTier, accessStatus, trialDa
 
         <div className="flex items-center gap-3 flex-shrink-0">
           {accessStatus === "trial" && trialDaysRemaining != null && trialDaysRemaining > 0 && (
-            <Link
-              href="/subscribe"
-              className={`hidden sm:inline-block text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${
-                trialDaysRemaining <= 2
-                  ? "bg-[#D97706] text-white"
-                  : "bg-[var(--background)] text-[var(--color-muted)] border border-[var(--color-border)]"
-              }`}
-            >
-              {trialDaysRemaining}d trial left
-            </Link>
+            <span className="hidden sm:inline-flex items-center gap-1">
+              <Link
+                href="/subscribe"
+                className={`text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${
+                  trialDaysRemaining <= 2
+                    ? "bg-[#D97706] text-white"
+                    : "bg-[var(--background)] text-[var(--color-muted)] border border-[var(--color-border)]"
+                }`}
+              >
+                {trialDaysRemaining}d trial left
+              </Link>
+              <InfoTip term="trial" />
+            </span>
           )}
           {accessStatus === "subscribed" && (
             <span className={`hidden sm:inline-block text-[11px] font-medium px-2 py-0.5 rounded-full ${

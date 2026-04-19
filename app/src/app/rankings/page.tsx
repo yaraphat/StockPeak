@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
+import { InfoTip } from "@/components/info-tip";
 
 type Signal = "STRONG BUY" | "BUY" | "HOLD" | "SELL" | "STRONG SELL";
 
@@ -187,11 +188,21 @@ export default function RankingsPage() {
                     <tr className="border-b border-[var(--color-border)] text-[10px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">
                       <th className="px-4 py-3 text-left">Stock</th>
                       <th className="px-3 py-3 text-right">Price</th>
-                      <th className="px-3 py-3 text-right">Day</th>
-                      <th className="px-3 py-3 text-center">Signal</th>
-                      <th className="px-3 py-3 text-right">Score</th>
-                      <th className="px-3 py-3 text-right">RSI</th>
-                      <th className="px-3 py-3 text-right">Vol</th>
+                      <th className="px-3 py-3 text-right">
+                        <span className="inline-flex items-center gap-1 justify-end">Day <InfoTip term="day_change" /></span>
+                      </th>
+                      <th className="px-3 py-3 text-center">
+                        <span className="inline-flex items-center gap-1 justify-center">Signal <InfoTip term="signal" /></span>
+                      </th>
+                      <th className="px-3 py-3 text-right">
+                        <span className="inline-flex items-center gap-1 justify-end">Score <InfoTip term="score" /></span>
+                      </th>
+                      <th className="px-3 py-3 text-right">
+                        <span className="inline-flex items-center gap-1 justify-end">RSI <InfoTip term="rsi" /></span>
+                      </th>
+                      <th className="px-3 py-3 text-right">
+                        <span className="inline-flex items-center gap-1 justify-end">Vol <InfoTip term="volume_ratio" /></span>
+                      </th>
                       <th className="px-3 py-3"></th>
                     </tr>
                   </thead>
@@ -214,7 +225,12 @@ export default function RankingsPage() {
                             <Link href={`/stocks/${r.ticker}`} className="group block">
                               <div className="font-mono font-semibold text-sm text-[var(--color-primary)] group-hover:underline">
                                 {r.ticker}
-                                {r.category === "Z" && <span title="Z-category — avoid" className="ml-1 text-[#DC2626]">⚠</span>}
+                                {r.category === "Z" && (
+                                  <span className="ml-1 inline-flex items-center gap-0.5 align-middle">
+                                    <span className="text-[#DC2626]" aria-hidden>⚠</span>
+                                    <InfoTip term="category" />
+                                  </span>
+                                )}
                               </div>
                               {r.company_name && r.company_name.toUpperCase() !== r.ticker && (
                                 <div className="text-[11px] text-[var(--color-muted)] truncate max-w-[180px]">{r.company_name}</div>

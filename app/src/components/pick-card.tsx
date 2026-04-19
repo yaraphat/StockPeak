@@ -1,4 +1,5 @@
 import type { Pick, PickOutcome } from "@/lib/types";
+import { InfoTip } from "./info-tip";
 
 function confidenceLabel(c: number) {
   if (c >= 7) return "High Confidence";
@@ -40,6 +41,7 @@ export function PickCard({
   const target = Number(pick.target);
   const stopLoss = Number(pick.stop_loss);
   const gainPct = (((target - buyZone) / buyZone) * 100).toFixed(1);
+  const lossPct = (((stopLoss - buyZone) / buyZone) * 100).toFixed(1);
 
   return (
     <div className="border border-[var(--color-border)] rounded-lg p-4">
@@ -56,19 +58,33 @@ export function PickCard({
           </p>
         </div>
         <div className="text-right font-mono tabular-nums text-sm">
-          <div className="font-medium">৳{buyZone.toFixed(2)}</div>
-          <div className="text-xs text-[var(--color-muted)]">
+          <div className="inline-flex items-center gap-1 font-medium">
+            ৳{buyZone.toFixed(2)}
+            <span className="text-[10px] font-sans text-[var(--color-muted)] uppercase tracking-wider">
+              buy
+            </span>
+            <InfoTip term="buy_zone" />
+          </div>
+          <div className="inline-flex items-center gap-1 text-xs text-[var(--color-muted)]">
             Target: ৳{target.toFixed(2)}
+            <InfoTip term="target" />
+          </div>
+          <div className="inline-flex items-center gap-1 text-xs text-[#DC2626]">
+            Stop: ৳{stopLoss.toFixed(2)}
+            <InfoTip term="stop_loss" />
           </div>
         </div>
       </div>
       <div className="flex justify-between items-center pt-2 border-t border-[var(--color-border-subtle)]">
-        <span className="text-[var(--color-success)] font-semibold text-sm">
+        <span className="inline-flex items-center gap-1 text-[var(--color-success)] font-semibold text-sm">
           +{gainPct}% upside
+          <InfoTip term="upside" />
+          <span className="text-xs font-normal text-[var(--color-muted)]">· {lossPct}% risk</span>
         </span>
-        <span className="text-xs text-[var(--color-muted)] font-mono flex items-center gap-1">
+        <span className="inline-flex items-center gap-1 text-xs text-[var(--color-muted)] font-mono">
           <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)]" />
           {pick.confidence}/10 {confidenceLabel(pick.confidence)}
+          <InfoTip term="confidence" />
         </span>
       </div>
       {showReasoning && pick.reasoning_bn && (

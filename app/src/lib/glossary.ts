@@ -110,4 +110,82 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     en: "Warning signs to consider before entering — category risk, liquidity issues, stale data, or unusual price action.",
     bn: "কেনার আগে সতর্ক হওয়ার বিষয়গুলো।",
   },
+
+  // Track record / scorecard terms
+  hit_rate: {
+    title: "Hit rate",
+    en: "Percentage of past picks that reached their target before stopping out. Higher is better. Industry average for swing trading is 40–55%.",
+    bn: "অতীতে কতগুলো পিক স্টপ-লসের আগে টার্গেটে পৌঁছেছে। সুইং ট্রেডিংয়ে ৪০-৫৫% সাধারণ।",
+  },
+  total_picks: {
+    title: "Total picks",
+    en: "How many picks we've published since we started tracking. Larger sample = more reliable hit rate.",
+    bn: "এখন পর্যন্ত প্রকাশিত মোট পিক সংখ্যা। সংখ্যা বাড়লে হিট রেট আরও নির্ভরযোগ্য।",
+  },
+  avg_gain: {
+    title: "Avg gain",
+    en: "Average return per resolved pick (winners + losers combined). Positive means the strategy makes money on average.",
+    bn: "প্রতি সম্পন্ন পিকে গড় রিটার্ন (লাভ ও ক্ষতি মিলিয়ে)। ধনাত্মক মানে গড়ে লাভজনক।",
+  },
+  market_mood: {
+    title: "Market mood",
+    en: "Today's breadth reading. Bullish = more stocks up than down. Bearish = more stocks down. Neutral = mixed. Strong mood tilts the odds on all picks.",
+    bn: "আজকের সার্বিক বাজার মেজাজ। Bullish মানে বেশিরভাগ স্টক উপরে, Bearish মানে নিচে।",
+  },
+  day_change: {
+    title: "Day change",
+    en: "Today's percentage price move vs. yesterday's close. Green = up, red = down.",
+    bn: "আজকের দাম গতকালের তুলনায় কত শতাংশ বদলেছে।",
+  },
+
+  // DSE-specific
+  category: {
+    title: "DSE category",
+    en: "DSE classifies listed companies A–Z based on performance and compliance. A = regular dividend-paying blue-chip. B = paying but lower grade. N = newly listed. Z = dividend default / AGM not held / loss-making — high risk, T+9 settlement.",
+    bn: "DSE কোম্পানিগুলোকে A থেকে Z ক্যাটাগরিতে ভাগ করে। A = নিয়মিত ডিভিডেন্ড, Z = ঝুঁকিপূর্ণ।",
+  },
+
+  // Account / access state
+  trial: {
+    title: "Free trial",
+    en: "7 days of full paid-tier access when you sign up. No card required. Subscribe before it ends to keep access.",
+    bn: "সাইন আপ করলে ৭ দিন ফ্রি ট্রায়াল। কার্ড লাগবে না। মেয়াদ শেষের আগে সাবস্ক্রাইব করুন।",
+  },
+  subscribed: {
+    title: "Active subscription",
+    en: "Your subscription is active. Full access to your tier's features.",
+    bn: "আপনার সাবস্ক্রিপশন সক্রিয়। আপনার টিয়ারের সব ফিচার ব্যবহার করতে পারবেন।",
+  },
+  expired: {
+    title: "Access expired",
+    en: "Trial or subscription has ended. Picks, P&L, and analysis are locked until you subscribe.",
+    bn: "ট্রায়াল বা সাবস্ক্রিপশন শেষ হয়েছে। সাবস্ক্রাইব না করলে পিক ও বিশ্লেষণ দেখা যাবে না।",
+  },
+
+  // Pick card labels
+  confidence: {
+    title: "Confidence",
+    en: "Our conviction in this specific pick, 1–10. 1–3 = speculative. 4–6 = moderate. 7–10 = high confidence. Even high-confidence picks can lose — always honor the stop-loss.",
+    bn: "এই পিকে আমাদের আস্থা, ১-১০ স্কেলে। ১-৩ অনুমান-ভিত্তিক, ৪-৬ মাঝারি, ৭-১০ উচ্চ আস্থা। উচ্চ আস্থার পিকও লস হতে পারে — স্টপ-লস মেনে চলুন।",
+  },
+  buy_zone: {
+    title: "Buy zone",
+    en: "The price range where we recommend entering. Don't chase above the top — wait for a pullback inside the zone.",
+    bn: "যে দামে কেনার পরামর্শ দিচ্ছি। এই রেঞ্জের উপরে ছুটবেন না, পুলব্যাকের জন্য অপেক্ষা করুন।",
+  },
+  target: {
+    title: "Target",
+    en: "Price level where we recommend taking profit. If hit, consider selling at least half your position.",
+    bn: "যে দামে লাভ তোলার পরামর্শ দিচ্ছি। পৌঁছালে অন্তত অর্ধেক শেয়ার বিক্রি করুন।",
+  },
+  stop_loss: {
+    title: "Stop-loss",
+    en: "If price drops to this level, sell immediately to cap your loss. Never widen or ignore a stop-loss once set.",
+    bn: "দাম এখানে নেমে এলে সাথে সাথে বিক্রি করে দিন। একবার সেট করা স্টপ-লস কখনো পরিবর্তন করবেন না।",
+  },
+  upside: {
+    title: "Upside",
+    en: "Expected percentage gain from the buy zone to the target, if the plan plays out. Not a guarantee — actual result depends on execution and market conditions.",
+    bn: "বাই জোন থেকে টার্গেট পর্যন্ত আশানুরূপ শতাংশ লাভ। নিশ্চিত নয় — বাজার পরিস্থিতি ও বাস্তবায়নের উপর নির্ভর করে।",
+  },
 };

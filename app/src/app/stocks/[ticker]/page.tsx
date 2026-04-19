@@ -7,6 +7,7 @@ import { StockChartClient } from "./chart-client";
 import { StockSearch } from "@/components/stock-search";
 import { AppHeader } from "@/components/app-header";
 import { AnalysisPanel } from "@/components/analysis-panel";
+import { InfoTip } from "@/components/info-tip";
 
 export const dynamic = "force-dynamic";
 
@@ -135,12 +136,15 @@ export default async function StockPage({ params }: { params: Promise<{ ticker: 
               <div className="flex items-center gap-3 mb-1">
                 <h1 className="font-mono text-2xl font-bold text-[var(--color-primary)]">{stock.ticker}</h1>
                 {stock.category && (
-                  <span className={`text-xs font-mono px-2 py-0.5 rounded ${
-                    stock.category === "A" ? "bg-[rgba(22,163,74,0.1)] text-[#16A34A]" :
-                    stock.category === "Z" ? "bg-[rgba(220,38,38,0.1)] text-[#DC2626]" :
-                    "bg-[var(--background)] text-[var(--color-muted)]"
-                  }`}>
-                    Cat {stock.category}
+                  <span className="inline-flex items-center gap-1">
+                    <span className={`text-xs font-mono px-2 py-0.5 rounded ${
+                      stock.category === "A" ? "bg-[rgba(22,163,74,0.1)] text-[#16A34A]" :
+                      stock.category === "Z" ? "bg-[rgba(220,38,38,0.1)] text-[#DC2626]" :
+                      "bg-[var(--background)] text-[var(--color-muted)]"
+                    }`}>
+                      Cat {stock.category}
+                    </span>
+                    <InfoTip term="category" />
                   </span>
                 )}
                 {stock.sector && (
@@ -165,8 +169,9 @@ export default async function StockPage({ params }: { params: Promise<{ ticker: 
                   <div className="font-mono text-2xl font-semibold tabular-nums">
                     ৳{Number(latest.close).toFixed(2)}
                   </div>
-                  <div className="font-mono text-sm tabular-nums" style={{ color: changeColor }}>
+                  <div className="inline-flex items-center gap-1 justify-end font-mono text-sm tabular-nums" style={{ color: changeColor }}>
                     {changePositive ? "+" : ""}{Number(latest.change_pct).toFixed(2)}%
+                    <InfoTip term="day_change" />
                   </div>
                   <div className={`text-[10px] mt-1 ${stale ? "text-[#D97706] font-medium" : "text-[var(--color-muted)]"}`}>
                     {stale && "⚠ "}

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { StockSearch } from "@/components/stock-search";
+import { InfoTip } from "@/components/info-tip";
 import { getScorecard } from "@/lib/db";
 
 const MIN_RESOLVED_FOR_STATS = 10;
@@ -110,11 +111,15 @@ export default async function Home() {
                 >
                   {scorecard!.hit_rate}%
                 </div>
-                <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-1">Hit Rate</div>
+                <div className="inline-flex items-center gap-1 text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-1">
+                  Hit Rate <InfoTip term="hit_rate" />
+                </div>
               </div>
               <div className="p-6 text-center">
                 <div className="font-mono text-4xl font-bold tabular-nums">{scorecard!.total_picks}</div>
-                <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-1">Total Picks</div>
+                <div className="inline-flex items-center gap-1 text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-1">
+                  Total Picks <InfoTip term="total_picks" />
+                </div>
               </div>
               <div className="p-6 text-center">
                 <div
@@ -130,7 +135,9 @@ export default async function Home() {
                 >
                   {scorecard!.avg_gain >= 0 ? "+" : ""}{scorecard!.avg_gain}%
                 </div>
-                <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-1">Avg Gain</div>
+                <div className="inline-flex items-center gap-1 text-[10px] text-[var(--color-muted)] uppercase tracking-widest mt-1">
+                  Avg Gain <InfoTip term="avg_gain" />
+                </div>
               </div>
             </div>
           ) : (
