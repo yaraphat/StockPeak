@@ -163,6 +163,12 @@ export function AnalysisPanel({ ticker }: { ticker: string }) {
             <span className="inline-flex items-center gap-1 text-xs text-[var(--color-muted)] capitalize">
               Your risk tier: {data.risk_tier}
               <InfoTip term="risk_tier" />
+              <Link
+                href="/onboarding"
+                className="ml-1 text-[10px] font-medium text-[var(--color-primary)] hover:underline normal-case"
+              >
+                change
+              </Link>
             </span>
           </div>
 
