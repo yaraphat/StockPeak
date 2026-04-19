@@ -1,8 +1,8 @@
 # Stock Peak — Tracker
 
-**Last updated:** 2026-04-15
-**Current state:** Infrastructure + auth + notification backbone built. Pipeline has never run end-to-end. Organized around **tiered milestone launches** with pricing, not a single-product ship.
-**Next unlock:** Run pipeline end-to-end on next trading day (2026-04-19) while M1 commercial prep proceeds in parallel.
+**Last updated:** 2026-04-19
+**Current state:** M1 Entry tier and M2 Analyst tier both shipped. Pipeline ran end-to-end on 2026-04-15 (3 picks: SUNLIFEINS, COPPERTECH, PRAGATIINS) but hasn't run since — `dse_daily_snapshots` has 1 row dated 2026-04-15.
+**Next unlock:** Kick the daily pipeline back on (broker_agent + daily_picks are wired and proven); clear M1 polish blockers in parallel.
 
 ---
 
@@ -10,16 +10,19 @@
 
 Stock Peak launches as **tiered pricing**, sequencing product milestones against revenue validation. Each tier delivers a discrete capability band. The AI "consultant" framing is earned by shipping evolving intelligence — not claimed upfront before evidence.
 
-**Pricing tiers (planned):**
+**Pricing tiers:**
 
-| Tier | Price | Capability | Milestone |
-|---|---|---|---|
-| **Entry** | **৳260/mo** | **3 daily picks + portfolio CRUD + P&L + stock search/timeline** | **M1** |
-| Premium | TBD | Risk-tiered personalized signals (same stock = BUY/HOLD/SELL per tier) | M2 |
-| Pro | TBD | Portfolio intelligence: VaR, correlation warnings, drawdown escalation | M3 |
-| Analyst | TBD | Multi-specialist deep analysis (fundamental + macro + sentiment per pick) | M4 |
-| Elite | TBD | Evolving system — demonstrable improvement over time via per-skill attribution | M5 |
-| Expert+ | TBD | Deeper AI analysis + periodic reports + relationship features (still AI-research-service framing with disclaimer) | M6 |
+| Tier | Price | Capability | Milestone | Status |
+|---|---|---|---|---|
+| **Entry** | **৳260/mo** | 3 daily picks + portfolio CRUD + P&L + stock search/timeline | M1 | **Shipped** |
+| **Analyst** | **৳550/mo** | DSE-wide rankings + per-stock AI analysis + trade plan + stop-loss ladder + position sizing | M2 | **Shipped** |
+| — | — | Risk-tiered personalized signals (same stock = BUY/HOLD/SELL per tier) — capability added to Analyst | M3 | Not shipped |
+| — | — | Portfolio intelligence UI: VaR, correlation warnings, drawdown escalation | M4 | Not shipped |
+| — | — | Multi-specialist deep analysis (Fundamental + Sentiment + Macro agents per pick) | M5 | Not shipped |
+| — | — | Evolving system — demonstrable improvement via per-skill attribution | M6 | Not shipped |
+| — | — | Periodic reports + relationship features (still AI-research-service framing with disclaimer) | M7 | Not shipped |
+
+Milestones M3+ add capability depth within the shipped Entry + Analyst tier structure. New paywalls are not planned; price changes on Analyst may follow value additions.
 
 **Positioning (all tiers):** Stock Peak is an **AI research/signal service**, never a registered investment adviser. Every output carries the Bengali disclaimer "শিক্ষামূলক AI বিশ্লেষণ, বিনিয়োগ পরামর্শ নয়" (educational AI analysis, not investment advice). Same regulatory category as StockLens BD, Bloomberg, Morningstar — none BSEC-registered. AI agents cannot be BSEC-registered by law. M1 specifically: "AI picks + portfolio tracker" — matches StockLens BD's price tier but beats on portfolio-integrated P&L and stock-search timeline. Each subsequent tier adds capability depth within the research-service framing, never advisory claims.
 
@@ -48,13 +51,35 @@ Stock Peak launches as **tiered pricing**, sequencing product milestones against
 - [x] Security headers (X-Frame-Options, HSTS, Referrer-Policy, etc.)
 - [x] Date parameter validation on admin routes
 
-### Picks pipeline (built, not yet run end-to-end)
+### Picks pipeline (ran end-to-end 2026-04-15)
 - [x] 3-stage isolated pipeline: `broker_agent.py` → `prepare_candidates.py` → `generate_picks_openrouter.py` → `store_picks.py`
 - [x] Technical indicators (RSI/MACD/ATR/Bollinger/volume) for all DSE actively-traded stocks
 - [x] 3 risk tiers computed per stock (conservative/moderate/aggressive)
 - [x] Multi-agent bull/bear debate (`multi_agent.py`, opt-in via `MULTI_AGENT=1`)
 - [x] Risk profiling questionnaire with 30-day reassessment lock
 - [x] OpenRouter backend + admin API routes for all pipeline stages
+- [x] `daily_picks.py` auto-runs `broker_agent.py` if report is missing or >6h stale (Stage 0)
+- [x] Dynamic market-state detection (`market_state.py`) replaces hardcoded DSE holiday list
+- [x] First end-to-end run: 2026-04-15 10:46 BDT — 3 picks stored, 3 notifications fired
+
+### M1 Entry tier — shipped 2026-04-15
+- [x] **#35 Stock search + historical price timeline** (`/stocks/search`, `/stocks/[ticker]` with OHLCV chart, backfill script)
+- [x] **#36 Portfolio P&L calculation + display**
+- [x] **#37 Personal bKash + Nagad payment with SMS verification** (see memory/payment_architecture.md)
+- [x] **#38 Paywall + trial expiry gating** (7-day trial → ৳260/mo, JWT session_version refresh on tier change)
+- [x] **#39 Onboarding flow** — signup → `/welcome`
+
+### M2 Analyst tier — shipped 2026-04-15
+- [x] `schema-m2.sql` — `tier_catalog`, `subscriptions.tier`, `v_user_access` view with `current_tier` + `tier_rank`, `per_stock_analysis` cache table
+- [x] Access control — `requireAuth()`, `requireActiveAccess()` (402 if expired), `requireTier("analyst")` (402 with upgrade_url)
+- [x] 402 Payment Required enforced on all paid endpoints: `/api/picks`, `/api/portfolio/pnl`, `/api/notifications`, `/api/scorecard`, `/api/stocks/[t]/history` (2yr gate), `/api/stocks/[t]/analysis`, `/api/rankings`
+- [x] `lib/indicators.ts` — server-side RSI(7/14), EMA(9/21/50/200), MACD(12,26,9), ATR(14), volume ratio, swing S/R, `classifySignal` (matches Python broker_agent rules)
+- [x] `lib/trade-plan.ts` — ATR-based trade plan generator + 3-step trailing stop ladder + position sizing by risk tier
+- [x] `/api/stocks/[ticker]/analysis` — full AI read + trade plan for any DSE ticker
+- [x] `/api/rankings` — all 396 stocks scored, filterable + sortable
+- [x] `/rankings` page — Analyst-gated sortable table
+- [x] `components/analysis-panel.tsx` on `/stocks/[ticker]` — signal badge, AI read, trade plan card with entry zone / T1 / T2 / initial stop / stop-loss ladder / position sizing, support/resistance, 52W range bar, indicators grid, red flags; falls back to `AnalystUpsell` for Entry tier
+- [x] Landing page gating — aggregate track record + locked teaser (no free sample picks)
 
 ### Notifications (in-app, replacing Telegram channel)
 - [x] `notifications` DB table + fan-out per user
@@ -87,7 +112,7 @@ Stock Peak launches as **tiered pricing**, sequencing product milestones against
 ### Blockers (must ship before launch)
 
 **Pipeline correctness:**
-- [ ] #1 Run pipeline end-to-end once quota resets (unblocks everything)
+- [x] ~~#1 Run pipeline end-to-end~~ — done 2026-04-15
 - [ ] #32 Wrap `store_picks` insertion loop in DB transaction
 - [ ] #34 Schema migration tracking in entrypoint (replaces marker-file deploy bomb)
 - [ ] #7 Pydantic models for all LLM output envelopes
@@ -98,12 +123,7 @@ Stock Peak launches as **tiered pricing**, sequencing product milestones against
 - [ ] #4 Bake notification system into Docker image (currently live-patched)
 - [ ] #12 Switch production LLM off free tier (direct Anthropic ~$5-10/mo, or paid OpenRouter 1000 req/day)
 
-**M1 features:**
-- [ ] **#35 Stock search + historical price timeline** (case-insensitive fuzzy search, OHLCV chart, backfill script)
-- [ ] **#36 Portfolio P&L calculation + display** (programmatic, no AI)
-- [ ] **#37 Personal bKash + Nagad payment with SMS verification** (no merchant approval, ~2-3 days)
-- [ ] **#38 Paywall + trial expiry gating** (7-day trial → ৳260/mo subscription, JWT session_version refresh)
-- [ ] **#39 Onboarding flow** (Day 0 → first pick retention mechanics, sample data during no-pick-yet window)
+**M1 features:** all shipped — see "Completed" section above.
 
 **Quality gates:**
 - [ ] #33 Write critical test suite (~35 Tier-1 tests, blocks launch; ~27 Tier-2 post-launch)
@@ -164,21 +184,27 @@ Week 6-7: PUBLIC LAUNCH
 
 ---
 
-## M2 — Premium: Risk-tiered signals
+## M2 — Analyst tier ✅ SHIPPED 2026-04-15
 
-**Product scope:** Same stock presented as BUY/HOLD/SELL per user's risk tier via per-user Risk Manager pipeline stage.
+See "Completed / M2 Analyst tier" section above for full list. Key ships: tier_catalog, access gates, `lib/indicators.ts`, `lib/trade-plan.ts`, `/api/stocks/[t]/analysis`, `/api/rankings`, `/rankings` page, `analysis-panel.tsx`, landing-page gating, 402 enforcement across paid endpoints.
 
-**Unlock trigger:** M1 shipped + first 20 paying users converted.
+---
+
+## M3 — Per-user Risk Manager (capability added to Analyst)
+
+**Product scope:** Same stock presented as BUY/HOLD/SELL per user's risk tier via per-user Risk Manager pipeline stage. The 3 risk tiers already exist in `risk_annotations` on broker-agent output; this milestone wires them into per-user delivery.
+
+**Unlock trigger:** First 20 Analyst-tier paying users converted + demand for personalization.
 
 - [ ] #24 Risk Manager per-user pipeline stage (includes `pick_deliveries` table + feature flag + suitability evidence JSONB)
 
 ---
 
-## M3 — Pro: Portfolio intelligence
+## M4 — Portfolio intelligence in UI (capability added to Analyst)
 
 **Product scope:** VaR display, correlation warnings, drawdown escalation notifications, DSEX-level market alerts.
 
-**Unlock trigger:** M2 converts + demand signal for portfolio-risk features.
+**Unlock trigger:** M3 converts + demand signal for portfolio-risk features.
 
 - [ ] #27 Portfolio drawdown tier escalation (-5/-10/-15/-20/-30% protocols)
 - [ ] #30 DSEX index-level monitoring + market-wide alerts
@@ -186,11 +212,13 @@ Week 6-7: PUBLIC LAUNCH
 
 ---
 
-## M4 — Analyst: Deep analysis
+## M5 — Specialist agent stack (capability added to Analyst)
 
-**Product scope:** Multi-specialist agents exposed in pick analysis, fundamental data per pick, macro context per pick.
+*Previously named "M4 Analyst — Deep analysis". Renamed because the Analyst tier name is now taken by the shipped product.*
 
-**Unlock trigger:** M3 converts + demand for "why did the AI pick this?"
+**Product scope:** Multi-specialist agents exposed in pick analysis, fundamental data per pick, macro context per pick. Upgrades the deterministic `classifySignal` in `lib/indicators.ts` with Agent-SDK-backed specialists.
+
+**Unlock trigger:** M4 converts + demand for "why did the AI pick this?"
 
 - [ ] #6 Replace prompt-template LLM call with Claude Agent SDK + tool use
 - [ ] #10 Expand specialist agent roles beyond bull/bear (fundamental, sentiment, macro, risk manager agents)
@@ -200,11 +228,11 @@ Week 6-7: PUBLIC LAUNCH
 
 ---
 
-## M5 — Elite: Evolving system (the moat)
+## M6 — Elite: Evolving system (the moat)
 
 **Product scope:** Skill library with decomposed prompts, per-skill attribution, skill lifecycle management, admin proposal review UI, autonomous feedback loop closes weekly.
 
-**Unlock trigger:** M4 converts + sufficient resolved-pick volume (~300+) for per-skill statistical significance.
+**Unlock trigger:** M5 converts + sufficient resolved-pick volume (~300+) for per-skill statistical significance.
 
 - [ ] #15 Design skill decomposition — break monolithic prompt into named skill units
 - [ ] #16 Build skill registry (filesystem YAML + DB sync)
@@ -220,11 +248,11 @@ Week 6-7: PUBLIC LAUNCH
 
 ---
 
-## M6 — Expert+: Deeper features, same research-service framing
+## M7 — Expert+: Deeper features, same research-service framing
 
 **Product scope:** Monthly/quarterly/annual performance reports with per-skill attribution. Client-relationship layer (drawdown reassurance, FOMO guardrails, education nudges). Generic pick-delivery ops log for support. ALL outputs still carry "AI research, not advice" disclaimer — no advisory positioning, no suitability language in copy.
 
-**Unlock trigger:** M5 converts + demand for deeper features. No external regulatory gate.
+**Unlock trigger:** M6 converts + demand for deeper features. No external regulatory gate.
 
 - [ ] #29 Generic pick-delivery log (reframed from suitability audit — ops support, not compliance)
 - [ ] #28 Monthly/quarterly/annual report generators
@@ -234,59 +262,61 @@ Week 6-7: PUBLIC LAUNCH
 
 ## Milestone → task map (complete)
 
-| Task | Title | Milestone |
-|---|---|---|
-| #1 | Run picks pipeline end-to-end | M1 |
-| #2 | Remove Claude Code CLI from Dockerfile | M1 |
-| #3 | Rotate exposed OpenRouter API key | M1 |
-| #4 | Bake notification system into Docker image | M1 |
-| #7 | Pydantic envelopes | M1 |
-| #11 | Notification bell on all pages | M1 |
-| #12 | Switch production LLM off free tier | M1 |
-| #13 | Admin audit logging | M1 |
-| #31 | Observability dashboard | M1 |
-| #32 | Transaction wrap store_picks | M1 |
-| #33 | Critical test suite | M1 |
-| #34 | Schema migration tracking | M1 |
-| #35 | **Stock search + timeline** | **M1** |
-| #36 | **Portfolio P&L** | **M1** |
-| #37 | **Payment integration** | **M1 (long-lead)** |
-| #38 | **Paywall + trial gating** | **M1** |
-| #39 | **Onboarding flow** | **M1** |
-| #24 | Risk Manager per-user | M2 |
-| #27 | Drawdown tier escalation | M3 |
-| #30 | DSEX index monitoring | M3 |
-| #6 | Claude Agent SDK + tool use | M4 |
-| #8 | Study TradingAgents | M4 |
-| #10 | Specialist agents | M4 |
-| #25 | Fundamental data | M4 |
-| #26 | Macro feeds | M4 |
-| #5 | Feedback into prompts | M5 |
-| #9 | LangGraph orchestration | M5 |
-| #14 | Admin review UI | M5 |
-| #15 | Skill decomposition | M5 |
-| #16 | Skill registry | M5 |
-| #17 | Per-skill attribution (the moat) | M5 |
-| #18 | Skill lifecycle | M5 |
-| #19 | Skill retrieval | M5 |
-| #20 | DSE skill pack | M5 |
-| #22 | Regime detection | M5 |
-| #23 | Proposal engine upgrade | M5 |
-| #21 | Client-relationship skills | M6 |
-| #28 | Periodic reports | M6 |
-| #29 | Generic pick-delivery log (reframed) | M6 |
+| Task | Title | Milestone | Status |
+|---|---|---|---|
+| #1 | Run picks pipeline end-to-end | M1 | ✅ shipped 2026-04-15 |
+| #2 | Remove Claude Code CLI from Dockerfile | M1 | pending |
+| #3 | Rotate exposed OpenRouter API key | M1 | pending |
+| #4 | Bake notification system into Docker image | M1 | pending |
+| #7 | Pydantic envelopes | M1 | pending |
+| #11 | Notification bell on all pages | M1 | pending |
+| #12 | Switch production LLM off free tier | M1 | pending |
+| #13 | Admin audit logging | M1 | pending |
+| #31 | Observability dashboard | M1 | pending |
+| #32 | Transaction wrap store_picks | M1 | pending |
+| #33 | Critical test suite | M1 | pending |
+| #34 | Schema migration tracking | M1 | pending |
+| #35 | Stock search + timeline | M1 | ✅ shipped |
+| #36 | Portfolio P&L | M1 | ✅ shipped |
+| #37 | Payment integration | M1 | ✅ shipped |
+| #38 | Paywall + trial gating | M1 | ✅ shipped |
+| #39 | Onboarding flow | M1 | ✅ shipped |
+| — | Rankings page + per-stock analysis + trade plan + ladder + access gates | M2 | ✅ shipped 2026-04-15 |
+| #24 | Risk Manager per-user | M3 | pending |
+| #27 | Drawdown tier escalation | M4 | pending |
+| #30 | DSEX index monitoring | M4 | pending |
+| #6 | Claude Agent SDK + tool use | M5 | pending |
+| #8 | Study TradingAgents | M5 | pending |
+| #10 | Specialist agents | M5 | pending |
+| #25 | Fundamental data | M5 | pending |
+| #26 | Macro feeds | M5 | pending |
+| #5 | Feedback into prompts | M6 | pending |
+| #9 | LangGraph orchestration | M6 | pending |
+| #14 | Admin review UI | M6 | pending |
+| #15 | Skill decomposition | M6 | pending |
+| #16 | Skill registry | M6 | pending |
+| #17 | Per-skill attribution (the moat) | M6 | pending |
+| #18 | Skill lifecycle | M6 | pending |
+| #19 | Skill retrieval | M6 | pending |
+| #20 | DSE skill pack | M6 | pending |
+| #22 | Regime detection | M6 | pending |
+| #23 | Proposal engine upgrade | M6 | pending |
+| #21 | Client-relationship skills | M7 | pending |
+| #28 | Periodic reports | M7 | pending |
+| #29 | Generic pick-delivery log (reframed) | M7 | pending |
 
-**M1: 17 tasks. M2: 1. M3: 2. M4: 5. M5: 11. M6: 3. Total: 39 (3 new added today + 1 net new + existing 34 - 0 deleted = 39).**
+**Remaining work: M1: 11 pending. M3: 1. M4: 2. M5: 5. M6: 11. M7: 3. Total: 33 pending. Shipped: 6 M1 + 1 M2 bundle = 7 milestone ships.**
 
 ---
 
-## Operational state (as of 2026-04-15)
+## Operational state (as of 2026-04-19)
 
-- **Container:** stockpeak running; postgres + nextjs + notifier all healthy
-- **Picks in DB:** 0 (pipeline never run)
-- **Branch:** `claude-code-pipeline` (4373+ / 657− vs main, 10+ uncommitted files)
-- **Today:** DSE closed (Bengali New Year day 2, Pohela Boishakh). Tomorrow also closed. First run opportunity: Sunday 2026-04-19.
-- **OpenRouter quota:** expected to reset at midnight UTC
+- **Container:** stockpeak running; postgres + nextjs + notifier all under supervisord. Healthcheck currently flags "unhealthy" (cosmetic: probes 127.0.0.1 but Next.js binds to container hostname; not a real outage).
+- **Picks in DB:** 3 (SUNLIFEINS, COPPERTECH, PRAGATIINS — all dated 2026-04-15). `per_stock_analysis` cache empty (computed on-demand by endpoint).
+- **Snapshots:** 1 row in `dse_daily_snapshots` dated 2026-04-15. Daily pipeline has not run since; needs to be kicked off for 2026-04-19.
+- **Stock data coverage:** 187,136 rows across 396 tickers, through 2026-04-13.
+- **Branch:** `claude-code-pipeline`
+- **OpenRouter quota:** in use; no blocker
 
 ---
 

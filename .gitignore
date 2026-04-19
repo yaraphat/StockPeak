@@ -4,8 +4,10 @@ __pycache__/
 *.pyc
 
 # Next.js
+.next/
 app/.next/
 app/out/
+*.tsbuildinfo
 
 # Environment
 .env

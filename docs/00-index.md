@@ -39,17 +39,18 @@ A signal service publishes picks and disappears. A consultant:
 - Maintains a suitability record per recommendation (FINRA 2111 / Reg BI equivalent)
 - Evolves expertise over time based on its own outcomes
 
-## Current state (2026-04-14)
+## Current state (2026-04-19)
 
-Infrastructure + authentication + notification backbone are built. Pipeline has not yet run end-to-end (first attempt blocked on OpenRouter quota exhausted + today being a DSE market holiday). Consultant capabilities roughly 30-40% delivered — see `../TODO.md` for capability-by-capability breakdown with critical path.
+Two tiers live: **Entry ৳260/mo** (M1) and **Analyst ৳550/mo** (M2, shipped 2026-04-15). Pipeline ran end-to-end on 2026-04-15 (3 picks stored, notifications fired). Per-stock AI analysis + trade plan + stop-loss ladder + position sizing are wired on `/stocks/[ticker]` and `/rankings` for Analyst subscribers. Consultant capabilities roughly 50% delivered — see `../TODO.md` for capability-by-capability breakdown with critical path.
 
-**Next unlock:** run pipeline end-to-end → decompose monolithic prompt into versioned skills with per-skill outcome attribution → add per-user Risk Manager stage.
+**Next unlock:** run pipeline daily → decompose monolithic prompt into versioned skills with per-skill outcome attribution → add per-user Risk Manager stage.
 
 ## Biggest risks (updated for current reality)
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| Pipeline has never run — scrapers/APIs/schema may have untested bugs | Critical | Task #1: run end-to-end on next trading day |
+| ~~Pipeline has never run — scrapers/APIs/schema may have untested bugs~~ | ~~Critical~~ | Resolved 2026-04-15: first run produced 3 picks |
+| Pipeline not on daily cadence — snapshots stale since 2026-04-15 | High | Kick off daily run; verify scheduler cron windows + holiday detection |
 | One monolithic prompt — can't attribute wins/losses to specific skills | Critical | Tasks #15-17: skill decomposition + per-skill attribution |
 | No per-user personalization — recommending aggressive picks to conservative users is both unethical and legally exposed | High | Task #24: Risk Manager per-user stage |
 | No suitability audit log — can't defend against "you recommended a bad stock" complaints | High | Task #29: per-recommendation suitability log |

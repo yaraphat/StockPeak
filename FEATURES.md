@@ -1,8 +1,10 @@
 # Stock Peak — Feature State
 
-**Last updated:** 2026-04-14
+**Last updated:** 2026-04-19
 
 Stock Peak is an **AI stock broker/consultant** for the Dhaka Stock Exchange. This document tracks feature state. The daily operational tracker is in `TODO.md`. The domain vision is in `docs/` (see `docs/00-index.md`).
+
+**Live tiers:** Entry ৳260/mo (M1) + Analyst ৳550/mo (M2). Both shipped.
 
 ---
 
@@ -18,13 +20,33 @@ Stock Peak is an **AI stock broker/consultant** for the Dhaka Stock Exchange. Th
 - 7-day free trial auto-provisioned on signup
 
 **Dashboard + pages**
-- Landing page (Bengali hero, sample picks, market mood, scorecard, pricing)
+- Landing page (Bengali hero, aggregate track record, pricing, locked "today's picks" teaser — no free sample picks)
 - Dashboard with today's picks + market mood + scorecard + notification bell
 - Portfolio CRUD (add/remove holdings, summary cards)
 - Track Record (historical picks with outcome tags)
+- Stock detail page `/stocks/[ticker]` — OHLCV chart + (Analyst-tier) AI analysis panel
+- **Rankings page `/rankings`** (Analyst tier) — sortable table of all 396 DSE stocks with signal / score / RSI / volume
 - About / Privacy / Disclaimer (Bengali)
 - Risk profiling questionnaire with 30-day re-assessment lock
 - Risk profile badge in nav
+
+**Tiers + pricing (shipped)**
+- **Entry ৳260/mo** — 3 daily picks + portfolio P&L + stock search + charts + browser notifications + track record
+- **Analyst ৳550/mo** — everything in Entry + full DSE rankings + per-stock AI analysis + trade plan with stop-loss ladder + position sizing by risk tier + event warnings
+- 7-day free trial on signup (grants Entry-level access during trial)
+- Tier definitions in `tier_catalog` table; `subscriptions.tier` FK; `v_user_access` view exposes `current_tier` + `tier_rank`
+
+**M2 Analyst tier — per-stock AI analysis** (shipped 2026-04-15)
+- `/api/stocks/[ticker]/analysis` — deterministic indicator endpoint (no LLM call), returns signal + score + trade plan + AI read + red flags
+- `components/analysis-panel.tsx` — renders signal badge, AI-read bullets, trade plan card (entry zone, T1/T2 with %, initial stop), visual multi-step **stop-loss ladder** (Breakeven → Lock +0.5R → Lock +1.5R), position sizing against user's actual portfolio value, support/resistance, 52W range bar, indicators grid, red-flag alerts
+- Gracefully degrades to `AnalystUpsell` card for Entry-tier users
+- `lib/indicators.ts` — server-side RSI(7/14), EMA(9/21/50/200), MACD(12,26,9), ATR(14), volume ratio, swing S/R, `classifySignal` — matches Python `broker_agent.py` rules
+- `lib/trade-plan.ts` — ATR-based trade plan generator, 3-step trailing stop ladder, position sizing by risk tier (conservative 0.5% / moderate 1% / aggressive 2% of portfolio)
+- `per_stock_analysis` cache table (for future daily snapshots)
+
+**M2 Analyst tier — DSE rankings** (shipped 2026-04-15)
+- `/api/rankings` — all 396 stocks scored, filterable + sortable (Analyst-gated)
+- Each row: ticker, signal, score, RSI, volume ratio, click-through to `/stocks/[ticker]`
 
 **In-app notifications (replaces Telegram channel)**
 - `notifications` DB table, per-user rows
@@ -98,36 +120,45 @@ Stock Peak is an **AI stock broker/consultant** for the Dhaka Stock Exchange. Th
 - Date parameter validation on admin routes
 - Python scripts use parameterized SQL throughout (no injection vectors)
 
+**Access control + tier gating** (2026-04-15)
+- `lib/access.ts` helpers: `requireAuth()`, `requireActiveAccess()` (402 if trial expired), `requireTier("analyst")` (402 with `upgrade_url` if below required tier)
+- 402 Payment Required returned on access-gated endpoints (not 401) so frontend can route to `/subscribe`
+- `bumpSessionVersion()` invalidates existing JWTs on tier change
+- Paid endpoints now access-gated (not just auth-gated): `/api/picks`, `/api/portfolio/pnl`, `/api/notifications`, `/api/scorecard`, `/api/stocks/[t]/history` (2yr for paid, 30d otherwise), `/api/stocks/[t]/analysis`, `/api/rankings`
+- Auth-only (non-paid): `/api/portfolio` CRUD, `/api/subscription`, `/api/auth/*`, `/api/payments/*`
+- Public: `/api/stocks/search`, `/api/stocks/[t]` (for SEO funnel)
+
 ---
 
 ## Not yet shipped
 
-See `TODO.md` for organized capability-by-capability breakdown with critical path. The short version:
+See `TODO.md` for organized capability-by-capability breakdown with critical path. The short version.
 
-Organized around the 6 pricing tiers / milestones. Each tier is a discrete product launch.
+**Shipped tiers:** M1 Entry (৳260/mo) and M2 Analyst (৳550/mo) are live. Remaining milestones add capability depth within the existing tier structure — not new paywalls.
 
-### M1 — Entry tier ৳260/month (ship target: 3-5 weeks from 2026-04-15)
+### M1 Entry — remaining polish
 
-Product: 3 daily picks + portfolio CRUD + programmatic P&L + stock search/timeline + payment + paywall + onboarding. Positioned as "AI picks + portfolio tracker," not consultant.
-
-- Pipeline correctness: #1 (first run), #32 (transaction wrap), #34 (schema migrations), #7 (Pydantic)
+- Pipeline correctness: #32 (transaction wrap), #34 (schema migrations), #7 (Pydantic)
 - Infrastructure cleanup: #2 (remove Claude Code CLI), #3 (rotate key), #4 (bake notifications into image), #12 (paid LLM tier)
-- M1 features: #35 (stock search + timeline), #36 (portfolio P&L), #37 (payment integration — applications start NOW), #38 (paywall + trial), #39 (onboarding flow)
 - Quality: #33 (critical tests ~30), #31 (observability dashboard), #11 (bell everywhere), #13 (admin audit log)
 
-### M2 — Premium (post-M1 validation)
-- Risk-tiered signals (same stock = BUY/HOLD/SELL per user risk tier): #24 (Risk Manager per-user with `pick_deliveries` + feature flag)
+### M3 — Per-user Risk Manager (formerly "M2 Premium")
+- Risk-tiered signals (same stock = BUY/HOLD/SELL per user risk tier): #24 (Risk Manager per-user stage with `pick_deliveries` + feature flag + suitability evidence JSONB)
+- Note: today's 3 risk tiers are computed at the broker-agent layer and stored in `risk_annotations`, but not yet personalized per user at delivery time.
 
-### M3 — Pro
-- Portfolio intelligence surfaced in UI: #27 (drawdown escalation), #30 (DSEX monitoring)
+### M4 — Portfolio intelligence surfaced in UI (formerly "M3 Pro")
+- #27 (drawdown escalation -5/-10/-15/-20/-30% protocols)
+- #30 (DSEX index-level monitoring + market-wide alerts)
+- Frontend for VaR + correlation + drawdown (backend already exists in `portfolio_intelligence.py`)
 
-### M4 — Analyst
-- Deep analysis: #6 (Agent SDK + tools), #10 (specialist agents), #25 (fundamental data), #26 (macro feeds), #8 (study TradingAgents)
+### M5 — Specialist agent stack (formerly "M4 Analyst")
+*Renamed — the "Analyst" tier name now belongs to the shipped product. This milestone adds multi-specialist depth to Analyst.*
+- Deep analysis: #6 (Agent SDK + tools), #10 (specialist agents — Fundamental / Sentiment / Macro), #25 (fundamental data), #26 (macro feeds), #8 (study TradingAgents)
 
-### M5 — Elite (the moat)
+### M6 — Elite (the moat)
 - Evolving system: #15-#20 skill decomposition + registry + attribution + lifecycle + retrieval + DSE skill pack, #22 (regime detection), #23 (proposal engine upgrade), #5 (feedback into prompts), #14 (admin review UI), #9 (LangGraph)
 
-### M6 — Expert+ (deeper features, same AI-research-service framing)
+### M7 — Expert+ (deeper features, same AI-research-service framing)
 - Monthly/quarterly/annual reports, generic pick-delivery ops log, client-relationship layer: #28, #29 (reframed), #21
 - **Regulatory note:** Stock Peak never registers as a BSEC Investment Adviser. AI research service with disclaimer — same legal category as StockLens BD, Bloomberg. See `.claude/projects/-*/memory/regulatory_positioning.md`.
 
@@ -183,3 +214,5 @@ Tech stack:
 ## What was removed from the old FEATURES.md
 
 The previous version (dated 2026-04-08) was a flat P0/P1/P2/P3 priority list. This rewrite reorganizes around **consultant capabilities** (run → per-user → depth → relationship → evolution) to match the product vision defined in the domain research docs. Nothing shipped was removed; unshipped items were reorganized and augmented with the 8-9 new tasks from the full-workflow audit (Risk Manager per-user stage, suitability logs, fundamental data, macro feeds, drawdown escalation, monthly/quarterly reports, DSEX monitoring, observability dashboard).
+
+The 2026-04-19 revision adds the shipped Analyst tier (rankings + per-stock analysis + trade plan + stop-loss ladder + position sizing + access gates), reflects the pipeline first run on 2026-04-15, and renumbers future milestones M3-M7 since the "Analyst" name now belongs to the shipped tier.

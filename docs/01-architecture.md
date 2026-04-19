@@ -1,6 +1,6 @@
 # Stock Peak — System Architecture
 
-**Last updated:** 2026-04-14
+**Last updated:** 2026-04-19
 
 This document describes both the current architecture (what's deployed) and the target architecture (what the consultant workflow requires). The historical StockNow/iMDS/Kafka/Go-gateway design has been archived — it was never built and the consultant-first vision made it unnecessary.
 
@@ -27,7 +27,9 @@ This document describes both the current architecture (what's deployed) and the 
 │  ┌──────────────────────────────▼──────────────────────────────┐   ││
 │  │  Shared DB: picks, pick_outcomes, users, portfolio_holdings,  │  ││
 │  │  notifications, skill_proposals, feedback_reports,            │  ││
-│  │  dse_daily_snapshots, alerts_log, recommendations_log, ...    │  ││
+│  │  dse_daily_snapshots, dse_stocks, stock_data, alerts_log,     │  ││
+│  │  subscriptions, tier_catalog (M2), per_stock_analysis (M2),   │  ││
+│  │  pending_payments, portfolio_snapshots, market_state_log, ... │  ││
 │  └───────────────────────────────────────────────────────────────┘  ││
 │                                                                      │
 │  /var/log/stockpeak (Volume: logs)                                   │
@@ -71,6 +73,87 @@ Entrypoint (`docker/entrypoint.sh`) handles:
 
 ---
 
+## Shipped tier architecture
+
+Two product tiers are live. Both share the infrastructure above; they differ in which API endpoints and UI panels are reachable.
+
+### Entry tier (M1, ৳260/mo)
+
+- Dashboard renders today's 3 picks from `picks` table
+- Portfolio CRUD + P&L calculation
+- Stock search + `/stocks/[ticker]` page with OHLCV chart
+- Browser + in-app notifications
+- Track record page
+
+### Analyst tier (M2, ৳550/mo) — shipped 2026-04-15
+
+```
+User hits /stocks/[ticker] or /rankings
+   │
+   ▼
+┌─ requireTier("analyst") in lib/access.ts ─┐
+│  Queries v_user_access view                │
+│  Returns 402 + upgrade_url if below tier   │
+└────────────────┬───────────────────────────┘
+                 │ passes
+                 ▼
+  /api/stocks/[t]/analysis       /api/rankings
+   │                              │
+   │  reads stock_data             │  reads dse_daily_snapshots +
+   │  (≥50 rows required)          │  stock_data for all 396 tickers
+   │                              │
+   ▼                              ▼
+  lib/indicators.ts               lib/indicators.ts
+    rsi(), ema(), macd(),           classifySignal() per ticker
+    atr(), volumeRatio(),           sorted + filterable
+    swingLevels(),
+    classifySignal()
+   │
+   ▼
+  lib/trade-plan.ts
+    generateTradePlan(price, atr, riskTier)
+      entry zone: price ±0.5 ATR
+      T2: price + (targetMult × ATR)
+      T1: halfway to T2
+      initialStop: price − (stopMult × ATR)
+      ladder: 3 trailing steps at +1R/+2R/+3R
+    computePositionSize(plan, portfolioValue, riskTier)
+      1% risk rule × portfolio / R
+   │
+   ▼
+  components/analysis-panel.tsx
+    signal badge + AI-read bullets
+    trade plan card (entry / targets / stop)
+    visual stop-loss ladder
+    position sizing (against user's actual portfolio)
+    support/resistance levels
+    52W range bar
+    indicators grid
+    red-flag alerts
+```
+
+**Key design choice:** the Analyst-tier analysis endpoint is **deterministic** — no LLM call per request. `classifySignal` uses the same scoring rules as the Python `broker_agent.py`, ported to TypeScript in `lib/indicators.ts`. This gives <1ms per-ticker latency and lets the rankings page score all 396 stocks on a single request. LLM-backed specialists are planned for M5 (see below).
+
+**AI read bullets** are generated from indicator values by string templates, not an LLM — the name "AI read" is from the product surface, not the implementation.
+
+**Per-stock cache:** `per_stock_analysis` table exists but is currently unused; endpoint computes on-demand. If request volume grows, a daily snapshot job can populate the cache and the endpoint will serve from it when fresh (<12h).
+
+**Access gates applied across paid endpoints** (returns 402, not 401):
+
+| Endpoint | Gate |
+|---|---|
+| `/api/picks` | `requireActiveAccess` |
+| `/api/portfolio/pnl` | `requireActiveAccess` |
+| `/api/notifications` | `requireActiveAccess` |
+| `/api/scorecard` | `requireActiveAccess` |
+| `/api/stocks/[t]/history` | `requireActiveAccess` (2yr) / public (30d) |
+| `/api/stocks/[t]/analysis` | `requireTier("analyst")` |
+| `/api/rankings` | `requireTier("analyst")` |
+| `/api/portfolio` CRUD | `requireAuth` only (non-paid) |
+| `/api/stocks/search`, `/api/stocks/[t]` | public (SEO funnel) |
+
+---
+
 ## Target architecture — consultant workflow
 
 The process topology stays the same (single container, supervisord). The pipeline stages evolve from a linear 3-stage subprocess chain into a multi-agent DAG.
@@ -90,7 +173,7 @@ DAILY CRON (10:00 BDT, Sun-Thu, skipped on DSE holidays)
                                │ → dse_daily_snapshots + fundamentals + macro
                                ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│ STAGE 2: MULTI-AGENT ANALYSIS (parallel)                             │
+│ STAGE 2: MULTI-AGENT ANALYSIS (parallel) — M5 specialist agent stack │
 │   Technical Analyst    → indicators, patterns                       │
 │   Fundamental Analyst  → quality gates, valuation                   │
 │   Sentiment Analyst    → news, herding, block trades                │
@@ -102,6 +185,11 @@ DAILY CRON (10:00 BDT, Sun-Thu, skipped on DSE holidays)
 │     compute_sector_exposure()                                       │
 │     check_news_sentiment(ticker)                                    │
 │     ... (task #6)                                                   │
+│                                                                     │
+│   TODAY (shipped Analyst tier): Stage 2 is the single deterministic │
+│   classifySignal() in lib/indicators.ts. Specialists below replace  │
+│   it in M5. The "Analyst" name refers to the shipped product tier;  │
+│   specialists are the depth-capability layer added underneath.      │
 └──────────────────────────────┬──────────────────────────────────────┘
                                │ → per-analyst reports
                                ▼
