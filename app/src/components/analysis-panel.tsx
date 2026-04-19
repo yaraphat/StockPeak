@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { InfoTip } from "./info-tip";
 
 interface StopStep {
   trigger: number;
@@ -129,20 +130,28 @@ export function AnalysisPanel({ ticker }: { ticker: string }) {
         <div className="h-0.5" style={{ background: `linear-gradient(90deg, transparent, ${sig.fg}, transparent)`, opacity: 0.7 }} />
         <div className="p-6">
           <div className="flex items-center gap-3 flex-wrap mb-4">
-            <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider"
-                  style={{ background: sig.bg, color: sig.fg }}>
-              {data.signal}
+            <span className="inline-flex items-center gap-1">
+              <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider"
+                    style={{ background: sig.bg, color: sig.fg }}>
+                {data.signal}
+              </span>
+              <InfoTip term="signal" />
             </span>
-            <span className="text-sm font-semibold tabular-nums" style={{ color: data.score > 0 ? "#16A34A" : data.score < 0 ? "#DC2626" : "#78716C" }}>
-              Score {data.score > 0 ? "+" : ""}{data.score}
+            <span className="inline-flex items-center gap-1">
+              <span className="text-sm font-semibold tabular-nums" style={{ color: data.score > 0 ? "#16A34A" : data.score < 0 ? "#DC2626" : "#78716C" }}>
+                Score {data.score > 0 ? "+" : ""}{data.score}
+              </span>
+              <InfoTip term="score" />
             </span>
             <span className="text-xs text-[var(--color-muted)]">·</span>
-            <span className="text-xs text-[var(--color-muted)]">
+            <span className="inline-flex items-center gap-1 text-xs text-[var(--color-muted)]">
               {plan?.timeframe ?? "Swing"}
+              <InfoTip term="timeframe" />
             </span>
             <span className="text-xs text-[var(--color-muted)]">·</span>
-            <span className="text-xs text-[var(--color-muted)] capitalize">
+            <span className="inline-flex items-center gap-1 text-xs text-[var(--color-muted)] capitalize">
               Your risk tier: {data.risk_tier}
+              <InfoTip term="risk_tier" />
             </span>
           </div>
 
@@ -167,15 +176,18 @@ export function AnalysisPanel({ ticker }: { ticker: string }) {
               <h3 className="font-display text-lg font-semibold">Trade Plan</h3>
               <p className="text-[11px] text-[var(--color-muted)] mt-0.5">Generated from technical indicators · ATR-based</p>
             </div>
-            <span className="text-xs font-mono text-[var(--color-muted)]">
+            <span className="inline-flex items-center gap-1 text-xs font-mono text-[var(--color-muted)]">
               R/R {plan.riskReward.toFixed(1)}:1
+              <InfoTip term="risk_reward" />
             </span>
           </div>
 
           {/* Entry + Targets + Stop grid */}
           <div className="p-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-[var(--background)] rounded-xl p-4">
-              <div className="text-[10px] uppercase tracking-wider text-[var(--color-muted)] mb-1">Entry zone</div>
+              <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-[var(--color-muted)] mb-1">
+                Entry zone <InfoTip term="entry_zone" />
+              </div>
               <div className="font-mono text-lg font-semibold tabular-nums">
                 ৳{plan.entryLow.toFixed(2)} – ৳{plan.entryHigh.toFixed(2)}
               </div>
@@ -185,15 +197,19 @@ export function AnalysisPanel({ ticker }: { ticker: string }) {
             </div>
             <div className="rounded-xl p-4" style={{ background: "rgba(22,163,74,0.05)" }}>
               <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "#16A34A" }}>Targets</div>
-              <div className="font-mono text-sm tabular-nums">
+              <div className="flex items-center gap-1 font-mono text-sm tabular-nums">
                 T1: ৳{plan.target1.toFixed(2)} <span className="text-[10px] text-[var(--color-muted)]">(+{plan.target1Pct.toFixed(1)}%)</span>
+                <InfoTip term="target_1" />
               </div>
-              <div className="font-mono text-sm tabular-nums mt-0.5">
+              <div className="flex items-center gap-1 font-mono text-sm tabular-nums mt-0.5">
                 T2: ৳{plan.target2.toFixed(2)} <span className="text-[10px] text-[var(--color-muted)]">(+{plan.target2Pct.toFixed(1)}%)</span>
+                <InfoTip term="target_2" />
               </div>
             </div>
             <div className="rounded-xl p-4" style={{ background: "rgba(220,38,38,0.05)" }}>
-              <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "#DC2626" }}>Initial stop</div>
+              <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider mb-1" style={{ color: "#DC2626" }}>
+                Initial stop <InfoTip term="initial_stop" />
+              </div>
               <div className="font-mono text-lg font-semibold tabular-nums">৳{plan.initialStop.toFixed(2)}</div>
               <div className="text-[10px] mt-1" style={{ color: "#DC2626" }}>
                 Risk ৳{plan.riskPerShare.toFixed(2)}/share ({plan.initialStopPct.toFixed(1)}%)
@@ -209,8 +225,9 @@ export function AnalysisPanel({ ticker }: { ticker: string }) {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0066CC" strokeWidth="2" strokeLinecap="round">
                   <path d="M7 17l5-5 5 5M7 7l5 5 5-5" />
                 </svg>
-                <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-primary)]">
+                <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-[var(--color-primary)]">
                   Stop-loss ladder — trail as price rises
+                  <InfoTip term="stop_ladder" />
                 </span>
               </div>
               <div className="divide-y divide-[rgba(0,102,204,0.08)]">
@@ -257,8 +274,9 @@ export function AnalysisPanel({ ticker }: { ticker: string }) {
           {data.position_sizing && data.position_sizing.quantity > 0 && (
             <div className="mx-6 mb-6 rounded-xl p-4"
                  style={{ background: "rgba(120,113,108,0.04)", border: "1px solid rgba(0,0,0,0.04)" }}>
-              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)] mb-2">
+              <div className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)] mb-2">
                 Position sizing ({data.risk_tier} tier)
+                <InfoTip term="position_sizing" />
               </div>
               <div className="grid grid-cols-3 gap-4 text-sm">
                 <div>
@@ -285,11 +303,17 @@ export function AnalysisPanel({ ticker }: { ticker: string }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="bg-white border border-[var(--color-border)] rounded-2xl p-5"
              style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.04)" }}>
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)] mb-3">Support & Resistance</h3>
+          <h3 className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)] mb-3">
+            Support & Resistance
+            <InfoTip term="support" />
+          </h3>
           <div className="space-y-2">
             {data.levels.resistances.map((r, i) => (
-              <div key={`r${i}`} className="flex justify-between text-sm">
-                <span className="text-xs text-[var(--color-muted)]">Resistance {i + 1}</span>
+              <div key={`r${i}`} className="flex justify-between items-center text-sm">
+                <span className="inline-flex items-center gap-1 text-xs text-[var(--color-muted)]">
+                  Resistance {i + 1}
+                  {i === 0 && <InfoTip term="resistance" />}
+                </span>
                 <span className="font-mono font-semibold tabular-nums" style={{ color: "#DC2626" }}>৳{r.toFixed(2)}</span>
               </div>
             ))}
@@ -298,16 +322,22 @@ export function AnalysisPanel({ ticker }: { ticker: string }) {
               <span className="font-mono font-semibold tabular-nums">৳{data.current_price.toFixed(2)}</span>
             </div>
             {data.levels.supports.map((s, i) => (
-              <div key={`s${i}`} className="flex justify-between text-sm">
-                <span className="text-xs text-[var(--color-muted)]">Support {i + 1}</span>
+              <div key={`s${i}`} className="flex justify-between items-center text-sm">
+                <span className="inline-flex items-center gap-1 text-xs text-[var(--color-muted)]">
+                  Support {i + 1}
+                  {i === 0 && <InfoTip term="support" />}
+                </span>
                 <span className="font-mono font-semibold tabular-nums" style={{ color: "#16A34A" }}>৳{s.toFixed(2)}</span>
               </div>
             ))}
           </div>
           {/* 52W bar */}
           <div className="mt-4 pt-3 border-t border-[var(--color-border-subtle)]">
-            <div className="flex justify-between text-[10px] text-[var(--color-muted)] mb-1">
-              <span>52W Low ৳{data.indicators.week_range.low.toFixed(2)}</span>
+            <div className="flex justify-between items-center text-[10px] text-[var(--color-muted)] mb-1">
+              <span className="inline-flex items-center gap-1">
+                52W Low ৳{data.indicators.week_range.low.toFixed(2)}
+                <InfoTip term="week_range" />
+              </span>
               <span>52W High ৳{data.indicators.week_range.high.toFixed(2)}</span>
             </div>
             <div className="h-1.5 bg-[var(--color-border)] rounded-full relative overflow-hidden">
@@ -325,13 +355,13 @@ export function AnalysisPanel({ ticker }: { ticker: string }) {
           <div className="grid grid-cols-2 gap-3 text-sm">
             {data.indicators.rsi_14 != null && (
               <div>
-                <div className="text-[10px] text-[var(--color-muted)]">RSI (14)</div>
+                <div className="flex items-center gap-1 text-[10px] text-[var(--color-muted)]">RSI (14) <InfoTip term="rsi" /></div>
                 <div className="font-mono font-semibold tabular-nums">{data.indicators.rsi_14.toFixed(0)}</div>
               </div>
             )}
             {data.indicators.macd_histogram != null && (
               <div>
-                <div className="text-[10px] text-[var(--color-muted)]">MACD</div>
+                <div className="flex items-center gap-1 text-[10px] text-[var(--color-muted)]">MACD <InfoTip term="macd" /></div>
                 <div className="font-mono font-semibold tabular-nums"
                      style={{ color: data.indicators.macd_bullish ? "#16A34A" : "#DC2626" }}>
                   {data.indicators.macd_histogram > 0 ? "+" : ""}{data.indicators.macd_histogram.toFixed(3)}
@@ -340,25 +370,25 @@ export function AnalysisPanel({ ticker }: { ticker: string }) {
             )}
             {data.indicators.volume_ratio != null && (
               <div>
-                <div className="text-[10px] text-[var(--color-muted)]">Volume</div>
+                <div className="flex items-center gap-1 text-[10px] text-[var(--color-muted)]">Volume <InfoTip term="volume_ratio" /></div>
                 <div className="font-mono font-semibold tabular-nums">{data.indicators.volume_ratio.toFixed(1)}×</div>
               </div>
             )}
             {data.indicators.atr_14 != null && (
               <div>
-                <div className="text-[10px] text-[var(--color-muted)]">ATR (14)</div>
+                <div className="flex items-center gap-1 text-[10px] text-[var(--color-muted)]">ATR (14) <InfoTip term="atr" /></div>
                 <div className="font-mono font-semibold tabular-nums">৳{data.indicators.atr_14.toFixed(2)}</div>
               </div>
             )}
             {data.indicators.ema_50 != null && (
               <div>
-                <div className="text-[10px] text-[var(--color-muted)]">EMA 50</div>
+                <div className="flex items-center gap-1 text-[10px] text-[var(--color-muted)]">EMA 50 <InfoTip term="ema_50" /></div>
                 <div className="font-mono font-semibold tabular-nums">৳{data.indicators.ema_50.toFixed(2)}</div>
               </div>
             )}
             {data.indicators.ema_200 != null && (
               <div>
-                <div className="text-[10px] text-[var(--color-muted)]">EMA 200</div>
+                <div className="flex items-center gap-1 text-[10px] text-[var(--color-muted)]">EMA 200 <InfoTip term="ema_200" /></div>
                 <div className="font-mono font-semibold tabular-nums">৳{data.indicators.ema_200.toFixed(2)}</div>
               </div>
             )}
@@ -373,7 +403,10 @@ export function AnalysisPanel({ ticker }: { ticker: string }) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2" strokeLinecap="round" className="mt-0.5 flex-shrink-0">
               <path d="M12 9v4M12 17h.01M5 21h14a2 2 0 001.75-2.98l-7-13a2 2 0 00-3.5 0l-7 13A2 2 0 005 21z" />
             </svg>
-            <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#D97706" }}>Red flags</h3>
+            <h3 className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "#D97706" }}>
+              Red flags
+              <InfoTip term="red_flags" />
+            </h3>
           </div>
           <ul className="space-y-1.5 ml-6">
             {data.red_flags.map((f, i) => (
