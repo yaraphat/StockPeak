@@ -87,11 +87,17 @@ export function volumeRatio(volumes: number[], period = 20): number | null {
   return Math.round((volumes[volumes.length - 1] / avg) * 100) / 100;
 }
 
-/** 52-week highs/lows */
+/** 52-week highs/lows. Filters out zero-OHLC rows (non-trading days or
+ *  ingest artifacts) which would otherwise poison the min. */
 export function weekRange(highs: number[], lows: number[], closes: number[]): { high: number; low: number; currentPct: number } {
   const n = Math.min(252, closes.length);
-  const h = Math.max(...highs.slice(-n));
-  const l = Math.min(...lows.slice(-n));
+  const windowHighs = highs.slice(-n).filter((x) => x > 0);
+  const windowLows = lows.slice(-n).filter((x) => x > 0);
+  if (windowHighs.length === 0 || windowLows.length === 0) {
+    return { high: 0, low: 0, currentPct: 50 };
+  }
+  const h = Math.max(...windowHighs);
+  const l = Math.min(...windowLows);
   const cur = closes[closes.length - 1];
   const currentPct = h > l ? ((cur - l) / (h - l)) * 100 : 50;
   return {
